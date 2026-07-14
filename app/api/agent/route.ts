@@ -30,6 +30,7 @@ const actionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("amend_food"), date: z.string().date(), entryId: z.string().min(1), changes: foodEntry.partial().omit({ id: true }).refine(value => Object.keys(value).length > 0) }),
   z.object({ action: z.literal("delete_food"), date: z.string().date(), entryId: z.string().min(1) }),
   z.object({ action: z.literal("upsert_food"), food: z.object({ id: z.string().min(1).optional(), name: z.string().min(1), brand: z.string().optional(), category: z.string().min(1), baseAmount: z.number().positive(), unit: z.string().min(1), nutrition, favorite: z.boolean().default(false), notes: z.string().max(1000).optional() }) }),
+  z.object({ action: z.literal("find_foods"), query: z.string().max(200).default(""), limit: z.number().int().min(1).max(50).default(10) }),
   z.object({ action: z.literal("log_water"), date: z.string().date(), addMl: z.number().positive().max(10000) }),
   z.object({ action: z.literal("log_body"), date: z.string().date(), weightKg: z.number().positive().max(500).optional(), waistCm: z.number().positive().max(300).optional(), bodyFatPercent: z.number().min(0).max(100).optional(), sleepHours: z.number().min(0).max(24).optional(), steps: z.number().int().min(0).max(100000).optional(), note: z.string().max(1000).optional() }).refine(value => Object.keys(value).some(key => !["action", "date"].includes(key))),
   z.object({ action: z.literal("get_daily_summary"), date: z.string().date() }),
@@ -106,6 +107,12 @@ export async function POST(request: Request) {
       const id = input.food.id ?? crypto.randomUUID();
       await db.doc(`users/${ownerId}/foods/${id}`).set({ ...input.food, id, useCount: 0, createdAt: now, updatedAt: now }, { merge: true });
       return Response.json({ ok: true, action: input.action, foodId: id });
+    }
+    if (input.action === "find_foods") {
+      const query = input.query.trim().toLowerCase();
+      const foods = await db.collection(`users/${ownerId}/foods`).get();
+      const matches = foods.docs.map(document => document.data()).filter(food => !query || `${food.name ?? ""} ${food.brand ?? ""} ${food.category ?? ""}`.toLowerCase().includes(query)).slice(0, input.limit);
+      return Response.json({ ok: true, action: input.action, foods: matches });
     }
     if (input.action === "log_water") {
       await dayRef(db, ownerId, input.date).set({ date: input.date, waterMl: FieldValue.increment(input.addMl), updatedAt: now, createdAt: now }, { merge: true });

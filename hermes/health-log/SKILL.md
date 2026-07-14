@@ -51,6 +51,7 @@ printf '%s' '<JSON>' | python3 scripts/health_api.py
 7. Never expose `HERMES_API_SECRET`, use browser automation, or send health data anywhere except `HEALTH_TRACKER_URL`.
 8. 補齊歷史營養時，先逐日呼叫 `get_daily_summary`，再以 `amend_food` 補每筆資料。包裝標示優先；無標示時可使用可信食物資料庫或合理份量估算，必須標為 `ai_estimated` 與 `low`／`medium` 信心，並在回覆中說明。
 9. 對可飲用的非酒精飲品（白水、無糖茶、咖啡、Coke Zero、牛奶、豆漿等），在 `log_food` 的同一筆 entry 填入 `hydrationMl`，把實際可飲用容量計入「水分（含飲品）」。**不可再額外呼叫 `log_water`，避免重複計算。** 未知容量時先詢問；若使用者同意估算，清楚標示估算依據（例如常見 Coke Zero 罐 330 ml）。
+10. 使用者說「常用食物」、「我的食物」或已知固定食物時，先呼叫 `find_foods` 搜尋現有資料；有精確命中時優先使用該營養資料。使用者明確要求儲存時，以 `upsert_food` 登記名稱、基準份量、營養、品牌與分類。
 
 ## Quick Reference
 
@@ -58,6 +59,7 @@ printf '%s' '<JSON>' | python3 scripts/health_api.py
 - `amend_food`: change a known `entryId`.
 - `delete_food`: delete a known `entryId` after confirmation.
 - `upsert_food`: save a frequently used food to the personal food library.
+- `find_foods`: 搜尋個人常用食物資料庫。
 - `log_water`: add water in millilitres; never overwrite a previous amount.
 - `log_body`: log any provided weight, waist, body-fat percentage, sleep hours, steps, or note.
 - `get_daily_summary`: read the source-of-truth daily entries and totals.

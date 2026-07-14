@@ -64,9 +64,20 @@ export async function listDailyOverviews(userId: string, count = 30): Promise<Da
 }
 
 export type SavedFoodSummary = { id: string; name: string; brand?: string; category: string; nutrition: { calories: number; protein: number; carbs: number; fat: number }; favorite?: boolean };
+export type SavedFoodInput = SavedFoodSummary & { baseAmount: number; unit: string; nutrition: SavedFoodSummary["nutrition"] & { sugar: number; fiber: number; saturatedFat: number; sodium: number }; notes?: string };
 
 export async function listFoods(userId: string): Promise<SavedFoodSummary[]> {
   if (!db) return [];
   const snapshot = await getDocs(query(collection(db, `users/${userId}/foods`), orderBy("name"), limit(100)));
   return snapshot.docs.map(item => ({ id: item.id, ...item.data() } as SavedFoodSummary));
+}
+
+export async function saveSavedFood(userId: string, food: SavedFoodInput): Promise<void> {
+  if (!db) throw new Error("Firebase 尚未設定");
+  await setDoc(doc(db, `users/${userId}/foods/${food.id}`), { ...food, useCount: 0, updatedAt: serverTimestamp(), createdAt: serverTimestamp() }, { merge: true });
+}
+
+export async function removeSavedFood(userId: string, foodId: string): Promise<void> {
+  if (!db) throw new Error("Firebase 尚未設定");
+  await deleteDoc(doc(db, `users/${userId}/foods/${foodId}`));
 }
