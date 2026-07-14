@@ -49,6 +49,7 @@ printf '%s' '<JSON>' | python3 scripts/health_api.py
 5. For a portion correction, recalculate calories, protein, carbs, fat, sugar, fiber, saturatedFat, and sodium for the final consumed portion before using `amend_food`.
 6. After a successful write, call `get_daily_summary` and reply concisely in Traditional Chinese with the change and daily calories, protein, sodium, and water.
 7. Never expose `HERMES_API_SECRET`, use browser automation, or send health data anywhere except `HEALTH_TRACKER_URL`.
+8. 補齊歷史營養時，先逐日呼叫 `get_daily_summary`，再以 `amend_food` 補每筆資料。包裝標示優先；無標示時可使用可信食物資料庫或合理份量估算，必須標為 `ai_estimated` 與 `low`／`medium` 信心，並在回覆中說明。
 
 ## Quick Reference
 
@@ -61,6 +62,8 @@ printf '%s' '<JSON>' | python3 scripts/health_api.py
 - `get_daily_summary`: read the source-of-truth daily entries and totals.
 - `import_history`: 一次匯入舊資料。JSON 放在 `data` 內，保留所有食物名稱／份量；缺少營養標示的食物以 0 記錄並標為低信心，不能自行假造精確營養數字。
 - `shift_imported_history`: 僅限修正剛匯入的整批歷史資料日期。必須明確列出來源日期、飲水日期、身體資料日期，以及需要保留原日期的既有資料；不可用於一般日常紀錄。
+
+`amend_food` 的 `changes.nutrition` 是「這次最終吃下的整份營養值」，不必也不可再乘以 `portion`。
 
 ## Procedure
 

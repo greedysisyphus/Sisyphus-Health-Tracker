@@ -73,7 +73,8 @@ export async function POST(request: Request) {
       return Response.json({ ok: true, action: input.action, entries });
     }
     if (input.action === "amend_food") {
-      await entryRef(db, ownerId, input.date, input.entryId).set({ ...input.changes, updatedAt: now }, { merge: true });
+      const { nutrition: finalNutrition, ...changes } = input.changes;
+      await entryRef(db, ownerId, input.date, input.entryId).set({ ...changes, ...(finalNutrition ?? {}), updatedAt: now }, { merge: true });
       return Response.json({ ok: true, action: input.action, entryId: input.entryId });
     }
     if (input.action === "delete_food") {
