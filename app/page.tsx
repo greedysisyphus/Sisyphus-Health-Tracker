@@ -8,6 +8,7 @@ import { getBodyLog, getDailyLog, getUserProfile, listDailyEntries, listDailyOve
 
 type View = "daily" | "overview" | "trends" | "foods";
 type EditorState = FoodEntry | null | undefined;
+type AnalysisTexts = Partial<Record<1 | 3 | 7, string>>;
 const targets = { caloriesKcal: 1800, proteinG: 120, carbsG: 200, fatG: 60, waterMl: 2800 };
 const dateLabel = (date: string) => new Intl.DateTimeFormat("zh-TW", { month: "long", day: "numeric", timeZone: "Asia/Taipei" }).format(new Date(`${date}T12:00:00`));
 const nowTime = () => new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Taipei" }).format(new Date());
@@ -26,6 +27,8 @@ export default function Home() {
   const [entryEditor, setEntryEditor] = useState<EditorState>(undefined);
   const [foodEditor, setFoodEditor] = useState<SavedFoodInput | null | undefined>(undefined);
   const [exporting, setExporting] = useState(false);
+  const [analysisTexts, setAnalysisTexts] = useState<AnalysisTexts>({});
+  const [analysisPreparing, setAnalysisPreparing] = useState(false);
   const totals = useMemo(() => calculateDailyNutrition(entries), [entries]);
 
   useEffect(() => {
@@ -65,13 +68,29 @@ export default function Home() {
     const payload = { schema_version: "2.0", exported_at: new Date().toISOString(), timezone: "Asia/Taipei", profile, targets, date_range: { start: startDate, end: endDate }, daily_records: records };
     const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" })); const link = document.createElement("a"); link.href = url; link.download = `health-records_${startDate}_to_${endDate}.json`; link.click(); URL.revokeObjectURL(url);
   };
-  const copyChatGPTAnalysis = async (days: 1 | 3 | 7) => {
+  const prepareChatGPTAnalysis = async () => {
     if (!user) return;
-    const end = formatLocalDate(new Date()); const start = formatLocalDate(new Date(new Date(`${end}T12:00:00`).getTime() - (days - 1) * 86400000));
-    const records = (await listDailyOverviews(user.uid, 365)).filter(day => day.date >= start && day.date <= end).sort((a, b) => a.date.localeCompare(b.date));
-    const text = records.map(day => `【${day.date}】\n${summaryLine(day.total)}\n水分 ${day.waterMl} ml｜體重 ${day.weightKg ?? "未記錄"} kg｜步數 ${day.steps ?? "未記錄"}\n食物：${day.entries.map(entry => `${entry.name}（${formatNutrition(totalForEntry(entry).caloriesKcal, "kcal")}）`).join("、") || "未記錄"}`).join("\n\n") || "沒有已記錄資料";
-    const copied = await copyPlainText(`請分析以下${days === 1 ? "今天" : `最近 ${days} 天`}健康紀錄。目標：減脂、改善 LDL、控制血壓、保留肌肉。請評估熱量、蛋白質、纖維、鈉、水分、咖啡因與體重趨勢，說明資料缺漏，並給 3 個可執行建議。\n\n${text}`);
+    setAnalysisPreparing(true);
+    try {
+      const allDays = await listDailyOverviews(user.uid, 365);
+      const end = formatLocalDate(new Date());
+      const makeText = (days: 1 | 3 | 7) => {
+        const start = formatLocalDate(new Date(new Date(`${end}T12:00:00`).getTime() - (days - 1) * 86400000));
+        const records = allDays.filter(day => day.date >= start && day.date <= end).sort((a, b) => a.date.localeCompare(b.date));
+        const recordsText = records.map(day => `【${day.date}】\n${summaryLine(day.total)}\n水分 ${day.waterMl} ml｜體重 ${day.weightKg ?? "未記錄"} kg｜步數 ${day.steps ?? "未記錄"}\n食物：${day.entries.map(entry => `${entry.name}（${formatNutrition(totalForEntry(entry).caloriesKcal, "kcal")}）`).join("、") || "未記錄"}`).join("\n\n") || "沒有已記錄資料";
+        return `請分析以下${days === 1 ? "今天" : `最近 ${days} 天`}健康紀錄。目標：減脂、改善 LDL、控制血壓、保留肌肉。請評估熱量、蛋白質、纖維、鈉、水分、咖啡因與體重趨勢，說明資料缺漏，並給 3 個可執行建議。\n\n${recordsText}`;
+      };
+      setAnalysisTexts({ 1: makeText(1), 3: makeText(3), 7: makeText(7) });
+    } catch { setNotice("無法準備分析資料，請確認網路後再試一次。"); }
+    finally { setAnalysisPreparing(false); }
+  };
+  const openExport = () => { setAnalysisTexts({}); setExporting(true); void prepareChatGPTAnalysis(); };
+  const copyChatGPTAnalysis = async (days: 1 | 3 | 7): Promise<boolean> => {
+    const text = analysisTexts[days];
+    if (!text) { setNotice("分析資料仍在準備中，請稍候再按一次。 "); return false; }
+    const copied = await copyPlainText(text);
     setNotice(copied ? "已複製資料與 ChatGPT 分析指令。" : "無法自動複製，請確認 Safari 允許網站使用剪貼簿後再試一次。");
+    return copied;
   };
 
   if (!hasFirebaseConfig) return <SetupScreen />;
@@ -82,14 +101,14 @@ export default function Home() {
     <aside className="sidebar"><div className="brand"><i>n</i><span>日常營養</span></div><p className="side-date">飲食、體重與喝水，都會安全地儲存在你的帳號。</p><Nav view={view} setView={setView} /><div className="profile"><div>{(user.displayName ?? user.email ?? "你").slice(0, 1)}</div><span>{user.displayName ?? "我的帳號"}<small>{user.email}</small></span><button className="text-button" onClick={() => void signOut(auth!)}>登出</button></div></aside>
     <section className="content">
       <div className="mobile-topbar"><div className="brand"><i>n</i><span>日常營養</span></div><button className="text-button" onClick={() => void signOut(auth!)}>登出</button></div>
-      {view === "daily" && <DailyView date={date} setDate={setDate} totals={totals} entries={entries} waterMl={waterMl} weightKg={weightKg} loading={loading} notice={notice} setEntryEditor={setEntryEditor} deleteEntry={deleteEntry} saveAsCommon={saveAsCommon} addWater={addWater} updateWeight={updateWeight} exportData={() => setExporting(true)} />}
-      {view === "overview" && <Overview history={history} openDate={next => { setDate(next); setView("daily"); }} exportData={() => setExporting(true)} />}
+      {view === "daily" && <DailyView date={date} setDate={setDate} totals={totals} entries={entries} waterMl={waterMl} weightKg={weightKg} loading={loading} notice={notice} setEntryEditor={setEntryEditor} deleteEntry={deleteEntry} saveAsCommon={saveAsCommon} addWater={addWater} updateWeight={updateWeight} exportData={openExport} />}
+      {view === "overview" && <Overview history={history} openDate={next => { setDate(next); setView("daily"); }} exportData={openExport} />}
       {view === "trends" && <Trends history={history} />}
       {view === "foods" && <FoodLibrary foods={savedFoods} add={() => setFoodEditor(null)} edit={setFoodEditor} remove={deleteFood} />}
     </section>
     {entryEditor !== undefined && <EntryEditor initial={entryEditor} savedFoods={savedFoods} close={() => setEntryEditor(undefined)} save={saveDailyEntry} />}
     {foodEditor !== undefined && <SavedFoodEditor initial={foodEditor} close={() => setFoodEditor(undefined)} save={saveFood} />}
-    {exporting && <ExportSheet close={() => setExporting(false)} exportRecords={exportRecords} copyAnalysis={copyChatGPTAnalysis} />}
+    {exporting && <ExportSheet close={() => setExporting(false)} exportRecords={exportRecords} copyAnalysis={copyChatGPTAnalysis} analysisReady={Boolean(analysisTexts[1])} analysisPreparing={analysisPreparing} />}
     <Nav view={view} setView={setView} mobile />
   </main>;
 }
@@ -134,4 +153,4 @@ function parseDraft(draft: Draft): { nutrition: Nutrition; servings: number; ser
 function EntryEditor({ initial, savedFoods, close, save }: { initial: FoodEntry | null; savedFoods: SavedFoodSummary[]; close: () => void; save: (entry: FoodEntry) => Promise<void> }) { const [draft, setDraft] = useState(() => draftFrom(initial ?? undefined)); const [error, setError] = useState(""); const [saving, setSaving] = useState(false); const submit = async () => { if (!draft.name.trim()) return setError("食物名稱不可空白。"); const parsed = parseDraft(draft); if (parsed.error) return setError(parsed.error); setSaving(true); try { await save({ id: initial?.id ?? crypto.randomUUID(), name: draft.name.trim(), brand: draft.brand.trim() || null, category: draft.category || null, mealType: draft.mealType, servings: parsed.servings, servingWeightG: parsed.servingWeightG, ...parsed.nutrition, hydrationMl: initial?.hydrationMl ?? 0, time: initial?.time ?? nowTime(), notes: draft.notes.trim() || null, ...(initial?.source ? { source: initial.source } : {}), ...(initial?.confidence ? { confidence: initial.confidence } : {}) }); } finally { setSaving(false); } }; return <Sheet title={initial ? "修改這筆紀錄" : "新增這筆紀錄"} close={close}><FoodFields draft={draft} setDraft={setDraft} includeMeal savedFoods={savedFoods} applySaved={food => setDraft(draftFrom(undefined, food))} />{error && <p className="form-error">{error}</p>}<button className="save-btn" onClick={() => void submit()} disabled={saving}>{saving ? "儲存中…" : "儲存資料"}</button></Sheet> }
 function SavedFoodEditor({ initial, close, save }: { initial: SavedFoodInput | null; close: () => void; save: (food: SavedFoodInput) => Promise<void> }) { const [draft, setDraft] = useState(() => draftFrom(undefined, initial ?? undefined)); const [error, setError] = useState(""); const [saving, setSaving] = useState(false); const submit = async () => { if (!draft.name.trim()) return setError("食物名稱不可空白。"); const parsed = parseDraft(draft); if (parsed.error) return setError(parsed.error); setSaving(true); try { await save({ id: initial?.id ?? crypto.randomUUID(), name: draft.name.trim(), brand: draft.brand.trim() || null, category: draft.category || null, servingWeightG: parsed.servingWeightG, nutrition: parsed.nutrition, favorite: initial?.favorite ?? true, notes: draft.notes.trim() || null }); } finally { setSaving(false); } }; return <Sheet title={initial ? "修改常用食物" : "新增常用食物"} close={close}><FoodFields draft={draft} setDraft={setDraft} includeMeal={false} />{error && <p className="form-error">{error}</p>}<button className="save-btn" onClick={() => void submit()} disabled={saving}>{saving ? "儲存中…" : "儲存食物"}</button></Sheet> }
 function Sheet({ title, close, children }: { title: string; close: () => void; children: React.ReactNode }) { return <div className="sheet-backdrop" onClick={close}><section className="sheet detail-sheet" onClick={event => event.stopPropagation()}><div className="grab" /><div className="sheet-title"><div><p className="eyebrow">DAILY LOG</p><h2>{title}</h2></div><button onClick={close}>×</button></div>{children}</section></div> }
-function ExportSheet({ close, exportRecords, copyAnalysis }: { close: () => void; exportRecords: (start: string, end: string) => Promise<void>; copyAnalysis: (days: 1 | 3 | 7) => Promise<void> }) { const today = formatLocalDate(new Date()); const [start, setStart] = useState(formatLocalDate(new Date(new Date(`${today}T12:00:00`).getTime() - 6 * 86400000))); const [end, setEnd] = useState(today); const [working, setWorking] = useState(false); const download = async () => { setWorking(true); try { await exportRecords(start, end); } finally { setWorking(false); } }; return <Sheet title="複製給 ChatGPT 分析" close={close}><p className="muted export-copy">直接複製實際紀錄與分析指令，不需要下載檔案。</p><div className="analysis-choices"><button className="save-btn" onClick={() => void copyAnalysis(1)}>複製今天資料＋分析指令</button><button className="parse-btn" onClick={() => void copyAnalysis(3)}>複製最近 3 天資料＋分析指令</button><button className="parse-btn" onClick={() => void copyAnalysis(7)}>複製最近 7 天資料＋分析指令</button></div><p className="export-divider">或下載完整資料</p><div className="form-grid"><label>開始日期<input type="date" value={start} onChange={event => setStart(event.target.value)} /></label><label>結束日期<input type="date" value={end} onChange={event => setEnd(event.target.value)} /></label></div><button className="parse-btn" disabled={working || start > end} onClick={() => void download()}>{working ? "準備中…" : "下載 JSON"}</button></Sheet> }
+function ExportSheet({ close, exportRecords, copyAnalysis, analysisReady, analysisPreparing }: { close: () => void; exportRecords: (start: string, end: string) => Promise<void>; copyAnalysis: (days: 1 | 3 | 7) => Promise<boolean>; analysisReady: boolean; analysisPreparing: boolean }) { const today = formatLocalDate(new Date()); const [start, setStart] = useState(formatLocalDate(new Date(new Date(`${today}T12:00:00`).getTime() - 6 * 86400000))); const [end, setEnd] = useState(today); const [working, setWorking] = useState(false); const download = async () => { setWorking(true); try { await exportRecords(start, end); } finally { setWorking(false); } }; const copy = (days: 1 | 3 | 7) => { void copyAnalysis(days); }; return <Sheet title="複製給 ChatGPT 分析" close={close}><p className="muted export-copy">先準備資料，再立即複製；這樣 iPhone Safari 可以正常運作。</p><div className="analysis-choices"><button className="save-btn" disabled={!analysisReady} onClick={() => copy(1)}>{analysisPreparing ? "正在準備資料…" : "複製今天資料＋分析指令"}</button><button className="parse-btn" disabled={!analysisReady} onClick={() => copy(3)}>複製最近 3 天資料＋分析指令</button><button className="parse-btn" disabled={!analysisReady} onClick={() => copy(7)}>複製最近 7 天資料＋分析指令</button></div><p className="export-divider">或下載完整資料</p><div className="form-grid"><label>開始日期<input type="date" value={start} onChange={event => setStart(event.target.value)} /></label><label>結束日期<input type="date" value={end} onChange={event => setEnd(event.target.value)} /></label></div><button className="parse-btn" disabled={working || start > end} onClick={() => void download()}>{working ? "準備中…" : "下載 JSON"}</button></Sheet> }
