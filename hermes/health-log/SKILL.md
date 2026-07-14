@@ -50,6 +50,7 @@ printf '%s' '<JSON>' | python3 scripts/health_api.py
 6. After a successful write, call `get_daily_summary` and reply concisely in Traditional Chinese with the change and daily calories, protein, sodium, and water.
 7. Never expose `HERMES_API_SECRET`, use browser automation, or send health data anywhere except `HEALTH_TRACKER_URL`.
 8. 補齊歷史營養時，先逐日呼叫 `get_daily_summary`，再以 `amend_food` 補每筆資料。包裝標示優先；無標示時可使用可信食物資料庫或合理份量估算，必須標為 `ai_estimated` 與 `low`／`medium` 信心，並在回覆中說明。
+9. 對可飲用的非酒精飲品（白水、無糖茶、咖啡、Coke Zero、牛奶、豆漿等），在 `log_food` 的同一筆 entry 填入 `hydrationMl`，把實際可飲用容量計入「水分（含飲品）」。**不可再額外呼叫 `log_water`，避免重複計算。** 未知容量時先詢問；若使用者同意估算，清楚標示估算依據（例如常見 Coke Zero 罐 330 ml）。
 
 ## Quick Reference
 
@@ -65,6 +66,8 @@ printf '%s' '<JSON>' | python3 scripts/health_api.py
 - `shift_imported_history`: 僅限修正剛匯入的整批歷史資料日期。必須明確列出來源日期、飲水日期、身體資料日期，以及需要保留原日期的既有資料；不可用於一般日常紀錄。
 
 `amend_food` 的 `changes.nutrition` 是「這次最終吃下的整份營養值」，不必也不可再乘以 `portion`。
+
+`hydrationMl` 是該筆飲品對每日總水分的貢獻；更正或刪除飲品時，API 會自動同步調整總水分。
 
 ## Analysis
 

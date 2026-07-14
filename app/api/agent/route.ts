@@ -6,7 +6,7 @@ import { getAdminDb } from "../../../lib/firebase-admin";
 export const runtime = "nodejs";
 
 const nutrition = z.object({ calories: z.number().min(0), protein: z.number().min(0), carbs: z.number().min(0), fat: z.number().min(0), sugar: z.number().min(0).default(0), fiber: z.number().min(0).default(0), saturatedFat: z.number().min(0).default(0), sodium: z.number().min(0).default(0) });
-const foodEntry = z.object({ id: z.string().min(1).optional(), name: z.string().min(1), meal: z.enum(["早餐", "午餐", "晚餐", "點心", "飲料", "其他"]), nutrition, portion: z.number().positive().default(1), unit: z.string().min(1).default("份"), time: z.string().default("現在"), source: z.enum(["nutrition_label", "restaurant_official", "ingredient_calculation", "database", "ai_estimated", "manual_estimated"]).default("ai_estimated"), confidence: z.enum(["high", "medium", "low"]).default("medium"), notes: z.string().max(1000).optional() });
+const foodEntry = z.object({ id: z.string().min(1).optional(), name: z.string().min(1), meal: z.enum(["早餐", "午餐", "晚餐", "點心", "飲料", "其他"]), nutrition, portion: z.number().positive().default(1), unit: z.string().min(1).default("份"), hydrationMl: z.number().min(0).max(10000).default(0), time: z.string().default("現在"), source: z.enum(["nutrition_label", "restaurant_official", "ingredient_calculation", "database", "ai_estimated", "manual_estimated"]).default("ai_estimated"), confidence: z.enum(["high", "medium", "low"]).default("medium"), notes: z.string().max(1000).optional() });
 const importedFood = z.object({
   name: z.string().min(1), quantity: z.union([z.number(), z.string()]).optional(), volume_ml: z.number().positive().optional(), calories: z.number().min(0).optional(), estimated_calories: z.number().min(0).optional(), protein_g: z.number().min(0).optional(), carbs_g: z.number().min(0).optional(), fat_g: z.number().min(0).optional(), sodium_mg: z.number().min(0).optional(), note: z.string().max(1000).optional(), restaurant: z.string().max(200).optional(), include: z.array(z.string().max(200)).optional(),
 }).passthrough();
@@ -73,11 +73,12 @@ export async function POST(request: Request) {
   try {
     if (input.action === "log_food") {
       const batch = db.batch();
-      batch.set(dayRef(db, ownerId, input.date), { date: input.date, updatedAt: now, createdAt: now }, { merge: true });
+      const hydrationMl = input.entries.reduce((total, entry) => total + entry.hydrationMl, 0);
+      batch.set(dayRef(db, ownerId, input.date), { date: input.date, ...(hydrationMl ? { waterMl: FieldValue.increment(hydrationMl) } : {}), updatedAt: now, createdAt: now }, { merge: true });
       const entries = input.entries.map(item => {
         const id = item.id ?? crypto.randomUUID();
         const nutrition = item.nutrition;
-        const entry = { id, name: item.name, meal: item.meal, calories: nutrition.calories * item.portion, protein: nutrition.protein * item.portion, carbs: nutrition.carbs * item.portion, fat: nutrition.fat * item.portion, sugar: nutrition.sugar * item.portion, fiber: nutrition.fiber * item.portion, saturatedFat: nutrition.saturatedFat * item.portion, sodium: nutrition.sodium * item.portion, portion: item.portion, unit: item.unit, time: item.time, source: item.source, confidence: item.confidence, notes: item.notes, createdAt: now, updatedAt: now };
+        const entry = { id, name: item.name, meal: item.meal, calories: nutrition.calories * item.portion, protein: nutrition.protein * item.portion, carbs: nutrition.carbs * item.portion, fat: nutrition.fat * item.portion, sugar: nutrition.sugar * item.portion, fiber: nutrition.fiber * item.portion, saturatedFat: nutrition.saturatedFat * item.portion, sodium: nutrition.sodium * item.portion, portion: item.portion, unit: item.unit, hydrationMl: item.hydrationMl, time: item.time, source: item.source, confidence: item.confidence, notes: item.notes, createdAt: now, updatedAt: now };
         batch.set(entryRef(db, ownerId, input.date, id), entry, { merge: true });
         return entry;
       });
@@ -86,11 +87,19 @@ export async function POST(request: Request) {
     }
     if (input.action === "amend_food") {
       const { nutrition: finalNutrition, ...changes } = input.changes;
+      if (changes.hydrationMl !== undefined) {
+        const current = await entryRef(db, ownerId, input.date, input.entryId).get();
+        const delta = changes.hydrationMl - Number(current.data()?.hydrationMl ?? 0);
+        if (delta) await dayRef(db, ownerId, input.date).set({ date: input.date, waterMl: FieldValue.increment(delta), updatedAt: now, createdAt: now }, { merge: true });
+      }
       await entryRef(db, ownerId, input.date, input.entryId).set({ ...changes, ...(finalNutrition ?? {}), updatedAt: now }, { merge: true });
       return Response.json({ ok: true, action: input.action, entryId: input.entryId });
     }
     if (input.action === "delete_food") {
+      const current = await entryRef(db, ownerId, input.date, input.entryId).get();
+      const hydrationMl = Number(current.data()?.hydrationMl ?? 0);
       await entryRef(db, ownerId, input.date, input.entryId).delete();
+      if (hydrationMl) await dayRef(db, ownerId, input.date).set({ date: input.date, waterMl: FieldValue.increment(-hydrationMl), updatedAt: now, createdAt: now }, { merge: true });
       return Response.json({ ok: true, action: input.action, entryId: input.entryId });
     }
     if (input.action === "upsert_food") {
