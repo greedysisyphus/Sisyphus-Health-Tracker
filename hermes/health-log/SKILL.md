@@ -1,7 +1,7 @@
 ---
 name: health-log
 description: 將飲食、喝水、體重、步數與睡眠安全寫入 Jovi 的健康追蹤網站；也可查詢、更正與分析既有紀錄。
-version: 1.4.0
+version: 1.5.0
 author: Jovi
 platforms: [macos]
 required_environment_variables:
@@ -49,7 +49,7 @@ printf '%s' '<JSON>' | python3 scripts/health_api.py
 5. For a serving correction, use `servings` only. Nutrition values are always **per serving**; never multiply them yourself before calling the API.
 6. After a successful write, call `get_daily_summary` once and reply concisely in Traditional Chinese with the change and daily calories, protein, sodium, and water. The only exception is the fast path below: it permits one confirmation call, but does not require it if the write response already returns the updated daily total.
 7. Never expose `HERMES_API_SECRET`, use browser automation, or send health data anywhere except `HEALTH_TRACKER_URL`.
-8. 補齊歷史營養時，先逐日呼叫 `get_daily_summary`，再以 `amend_food` 補每筆資料。包裝標示優先；無標示時可使用可信食物資料庫或合理份量估算，必須標為 `ai_estimated` 與 `low`／`medium` 信心，並在回覆中說明。
+8. 補齊歷史營養時，必須遵循下方的「歷史估算快速流程」。不得建立子任務、待辦清單或背景工作；不得使用 `skill_manage`、`memory`、自我改進、讀寫任何 skill／設定／檔案、瀏覽器或網路搜尋。只可使用 `scripts/health_api.py` 呼叫健康 API。
 9. **純白水一律使用 `log_water`**；這是最快、最直接的登記方式。其他可飲用的非酒精飲品（無糖茶、咖啡、Coke Zero、牛奶、豆漿等）則在 `log_food` 的同一筆 entry 填入 `hydrationMl`，把實際可飲用容量計入「水分（含飲品）」。同一份飲品不可同時 `log_food` 和 `log_water`，避免重複計算。未知容量時先詢問；若使用者同意估算，清楚標示估算依據（例如常見 Coke Zero 罐 330 ml）。
 10. 使用者說「常用食物」、「我的食物」或已知固定食物時，先呼叫 `find_foods` 搜尋現有資料；有精確命中時優先使用該營養資料。使用者明確要求儲存時，以 `upsert_food` 登記名稱、基準份量、營養、品牌與分類。
 
@@ -76,6 +76,18 @@ printf '%s' '<JSON>' | python3 scripts/health_api.py
 4. 若一句話同時有白水與湯品，例如「喝 1500 ml 水，加一碗味噌湯約 200 ml」，只做兩次寫入：一次 `log_water` 加 1500 ml，另一次 `log_food` 加「味噌湯」且 `hydrationMl: 200`。之後最多一次 `get_daily_summary` 確認即可。
 5. 若是已知容量的零熱量飲料，建立一筆 `log_food`（0 kcal）並填寫 `hydrationMl`；未知容量時才問一次容量，不能反覆查詢或猜測。
 6. 回覆只需確認新增內容與今日水分總計。整個流程最多 **2 次寫入 + 1 次確認**，不可因為這類簡單紀錄而進行額外工具呼叫。
+
+## Historical estimate fast path — 歷史估算補登
+
+使用者明確要求「補回以前數字」、「用估計補營養」時，這是一次有限、直接的 API 修正工作，**不是研究或規劃任務**。
+
+1. 只處理使用者指定的日期；每次最多 2 天。若範圍超過 2 天，先處理最早 2 天並回覆結果，不建立背景任務、也不繼續偷偷執行。
+2. 每一天只呼叫一次 `get_daily_summary`，從回應取得現有 entries 與精確 `entryId`。
+3. 僅對現有 food entry 呼叫 `amend_food`。不新增、刪除、重新命名食物，也不更動日期、飲水、體重、步數與份數。
+4. 依食物名稱和既有 notes 做保守的一般份量估計；**不可搜尋網路、讀取舊對話、讀取檔案或要求更多工具**。無法合理判斷的欄位填 0／null，並在 notes 加上「歷史估算」。
+5. 每筆修改只填每份營養：`calories`、`protein`、`carbs`、`fat`、`fiber`、`sugar`、`saturatedFat`、`sodium`、`caffeine`；`transFat`、`potassium`、`cholesterol` 未知為 `null`。source 使用 `ai_estimated`，confidence 使用 `low` 或 `medium`。
+6. 每天完成所有 amend 後，只再呼叫一次 `get_daily_summary` 確認；整天最多 **1 次讀取 + 每筆 1 次修改 + 1 次確認**。
+7. 回覆只列出已補登的食物、估計信心與當日總熱量／蛋白質／纖維／鈉。不可輸出工作步驟，不可寫入或修改這份 SKILL.md。
 
 ## Quick Reference
 
