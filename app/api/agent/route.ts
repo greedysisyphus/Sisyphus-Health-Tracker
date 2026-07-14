@@ -128,7 +128,7 @@ export async function POST(request: Request) {
             carbs: food.carbs_g ?? 0,
             fat: food.fat_g ?? 0,
             sodium: food.sodium_mg ?? 0,
-            portion: typeof food.quantity === "number" ? food.quantity : 1,
+            portion: food.volume_ml ?? (typeof food.quantity === "number" ? food.quantity : 1),
             unit: food.volume_ml ? "ml" : typeof food.quantity === "string" ? food.quantity : "份",
             notes: importedNotes(food),
           })),
