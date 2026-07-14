@@ -5,6 +5,22 @@
 .analysis-choices { display: grid; gap: 10px; margin: 18px 0; }
 .export-divider { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; margin: 22px 0 0; }
 .export-divider::before, .export-divider::after { content: ""; height: 1px; background: var(--line); flex: 1; }
+.daily-secondary { display: flex; flex-wrap: wrap; gap: 8px; margin: -8px 0 22px; }
+.daily-secondary b { background: #fff; border: 1px solid var(--line); border-radius: 999px; color: var(--sage-dark); font-size: 12px; font-weight: 500; padding: 8px 10px; }
+.form-section { border-top: 1px solid var(--line); padding: 17px 0 2px; }
+.form-section:first-child { border-top: 0; padding-top: 0; }
+.form-section h3 { font-size: 14px; margin-bottom: 12px; }
+.form-section h3 small { color: var(--muted); font-size: 11px; font-weight: 400; }
+.form-section > label { margin-bottom: 12px; }
+.form-section textarea { width: 100%; min-height: 76px; border: 1px solid var(--line); border-radius: 9px; color: var(--ink); font: inherit; padding: 11px; resize: vertical; }
+.advanced-toggle { width: 100%; border: 1px solid var(--line); border-radius: 9px; background: #fff; color: var(--sage-dark); cursor: pointer; font-size: 13px; padding: 11px; text-align: left; }
+.advanced-toggle + .form-grid { margin: 12px 0 4px; }
+.form-error { background: #fff2eb; border-radius: 9px; color: #9a4d2f; font-size: 13px; margin: 12px 0; padding: 10px 12px; }
+.detail-sheet .save-btn:disabled, .detail-sheet .parse-btn:disabled { cursor: wait; opacity: .65; }
+.entry-actions { display: flex; gap: 6px; }
+.entry-actions button { border: 1px solid var(--line); background: #fff; border-radius: 8px; color: var(--sage-dark); cursor: pointer; font-size: 12px; padding: 7px 8px; }
+.entry-actions button:last-child { color: #a65544; }
+.food-mark { display: block; width: 20px; height: 20px; }
 
 @media (max-width: 760px) {
   .content { padding: 18px 16px 96px; }
@@ -76,4 +92,8 @@
   .sheet { max-height: 92vh; overflow: auto; padding: 14px 18px calc(22px + env(safe-area-inset-bottom)); }
   .sheet-title h2 { font-size: 23px; }
   .form-grid { grid-template-columns: 1fr; gap: 12px; margin: 16px 0 18px; }
+  .daily-secondary { gap: 6px; margin-bottom: 18px; }
+  .daily-secondary b { font-size: 11px; padding: 7px 9px; }
+  .form-section { padding-top: 14px; }
+  .form-section textarea { min-height: 70px; }
 }

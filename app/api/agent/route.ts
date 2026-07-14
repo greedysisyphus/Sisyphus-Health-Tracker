@@ -5,10 +5,10 @@ import { getAdminDb } from "../../../lib/firebase-admin";
 
 export const runtime = "nodejs";
 
-const nutrition = z.object({ calories: z.number().min(0), protein: z.number().min(0), carbs: z.number().min(0), fat: z.number().min(0), sugar: z.number().min(0).default(0), fiber: z.number().min(0).default(0), saturatedFat: z.number().min(0).default(0), sodium: z.number().min(0).default(0) });
-const foodEntry = z.object({ id: z.string().min(1).optional(), name: z.string().min(1), meal: z.enum(["早餐", "午餐", "晚餐", "點心", "飲料", "其他"]), nutrition, portion: z.number().positive().default(1), unit: z.string().min(1).default("份"), hydrationMl: z.number().min(0).max(10000).default(0), time: z.string().default("現在"), source: z.enum(["nutrition_label", "restaurant_official", "ingredient_calculation", "database", "ai_estimated", "manual_estimated"]).default("ai_estimated"), confidence: z.enum(["high", "medium", "low"]).default("medium"), notes: z.string().max(1000).optional() });
+const nutrition = z.object({ calories: z.number().min(0), protein: z.number().min(0), carbs: z.number().min(0), fat: z.number().min(0), sugar: z.number().min(0).default(0), fiber: z.number().min(0).default(0), saturatedFat: z.number().min(0).default(0), transFat: z.number().min(0).nullable().optional().default(null), sodium: z.number().min(0).default(0), potassium: z.number().min(0).nullable().optional().default(null), cholesterol: z.number().min(0).nullable().optional().default(null), caffeine: z.number().min(0).default(0) });
+const foodEntry = z.object({ id: z.string().min(1).optional(), name: z.string().min(1), brand: z.string().max(200).nullable().optional(), category: z.string().max(100).nullable().optional(), meal: z.enum(["早餐", "午餐", "晚餐", "點心", "飲料", "宵夜", "其他"]), nutrition, servings: z.number().positive().optional(), servingWeightG: z.number().min(0).nullable().optional(), portion: z.number().positive().optional(), unit: z.string().min(1).optional(), hydrationMl: z.number().min(0).max(10000).default(0), time: z.string().default("現在"), source: z.enum(["nutrition_label", "restaurant_official", "ingredient_calculation", "database", "ai_estimated", "manual_estimated"]).default("ai_estimated"), confidence: z.enum(["high", "medium", "low"]).default("medium"), notes: z.string().max(1000).nullable().optional() });
 const importedFood = z.object({
-  name: z.string().min(1), quantity: z.union([z.number(), z.string()]).optional(), volume_ml: z.number().positive().optional(), calories: z.number().min(0).optional(), estimated_calories: z.number().min(0).optional(), protein_g: z.number().min(0).optional(), carbs_g: z.number().min(0).optional(), fat_g: z.number().min(0).optional(), sodium_mg: z.number().min(0).optional(), note: z.string().max(1000).optional(), restaurant: z.string().max(200).optional(), include: z.array(z.string().max(200)).optional(),
+  name: z.string().min(1), quantity: z.union([z.number(), z.string()]).optional(), volume_ml: z.number().positive().optional(), calories: z.number().min(0).optional(), estimated_calories: z.number().min(0).optional(), protein_g: z.number().min(0).optional(), carbs_g: z.number().min(0).optional(), fat_g: z.number().min(0).optional(), fiber_g: z.number().min(0).optional(), sugar_g: z.number().min(0).optional(), saturated_fat_g: z.number().min(0).optional(), trans_fat_g: z.number().min(0).nullable().optional(), sodium_mg: z.number().min(0).optional(), potassium_mg: z.number().min(0).nullable().optional(), cholesterol_mg: z.number().min(0).nullable().optional(), caffeine_mg: z.number().min(0).optional(), brand: z.string().max(200).nullable().optional(), category: z.string().max(100).nullable().optional(), serving_weight_g: z.number().min(0).nullable().optional(), note: z.string().max(1000).optional(), restaurant: z.string().max(200).optional(), include: z.array(z.string().max(200)).optional(),
 }).passthrough();
 const importedCoffee = z.object({ type: z.string().min(1), count: z.number().positive().optional(), volume_ml: z.number().positive().optional(), description: z.string().max(500).optional() }).passthrough();
 const importPayload = z.object({
@@ -18,7 +18,7 @@ const importPayload = z.object({
   analysis: z.record(z.string(), z.union([z.string(), z.number()])).optional(),
   records: z.array(z.object({ date: z.string().date(), water_ml: z.number().min(0).optional(), weight_kg: z.number().positive().optional(), steps: z.number().int().min(0).optional(), foods: z.array(importedFood).default([]), coffee: z.array(importedCoffee).default([]) })).min(1),
 });
-const exportNutrition = z.object({ calories_kcal: z.number().min(0).optional(), protein_g: z.number().min(0).optional(), fat_g: z.number().min(0).optional(), carbohydrate_g: z.number().min(0).optional(), sugar_g: z.number().min(0).optional(), fiber_g: z.number().min(0).optional(), saturated_fat_g: z.number().min(0).optional(), sodium_mg: z.number().min(0).optional(), estimated: z.boolean().optional() }).passthrough();
+const exportNutrition = z.object({ calories_kcal: z.number().min(0).optional(), protein_g: z.number().min(0).optional(), fat_g: z.number().min(0).optional(), carbohydrate_g: z.number().min(0).optional(), sugar_g: z.number().min(0).optional(), fiber_g: z.number().min(0).optional(), saturated_fat_g: z.number().min(0).optional(), trans_fat_g: z.number().min(0).nullable().optional(), sodium_mg: z.number().min(0).optional(), potassium_mg: z.number().min(0).nullable().optional(), cholesterol_mg: z.number().min(0).nullable().optional(), caffeine_mg: z.number().min(0).optional(), estimated: z.boolean().optional() }).passthrough();
 const exportItem = z.object({ name: z.string().min(1), quantity: z.union([z.number(), z.string()]).optional(), volume_ml: z.number().positive().optional(), weight_g: z.number().positive().optional(), note: z.string().max(1000).optional(), quantity_note: z.string().max(1000).optional(), components: z.array(z.string()).optional(), nutrition: exportNutrition.optional() }).passthrough();
 const historyExport = z.object({
   profile: z.object({ height_cm: z.number().positive().optional(), starting_weight_kg: z.number().positive().optional(), goal_weight_kg: z.number().positive().optional(), average_steps_per_day: z.number().int().min(0).optional() }).optional(),
@@ -29,7 +29,7 @@ const actionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("log_food"), date: z.string().date(), entries: z.array(foodEntry).min(1) }),
   z.object({ action: z.literal("amend_food"), date: z.string().date(), entryId: z.string().min(1), changes: foodEntry.partial().omit({ id: true }).refine(value => Object.keys(value).length > 0) }),
   z.object({ action: z.literal("delete_food"), date: z.string().date(), entryId: z.string().min(1) }),
-  z.object({ action: z.literal("upsert_food"), food: z.object({ id: z.string().min(1).optional(), name: z.string().min(1), brand: z.string().optional(), category: z.string().min(1), baseAmount: z.number().positive(), unit: z.string().min(1), nutrition, favorite: z.boolean().default(false), notes: z.string().max(1000).optional() }) }),
+  z.object({ action: z.literal("upsert_food"), food: z.object({ id: z.string().min(1).optional(), name: z.string().min(1), brand: z.string().nullable().optional(), category: z.string().nullable().optional(), servingWeightG: z.number().min(0).nullable().optional(), nutrition, favorite: z.boolean().default(false), notes: z.string().max(1000).nullable().optional() }) }),
   z.object({ action: z.literal("find_foods"), query: z.string().max(200).default(""), limit: z.number().int().min(1).max(50).default(10) }),
   z.object({ action: z.literal("log_water"), date: z.string().date(), addMl: z.number().positive().max(10000) }),
   z.object({ action: z.literal("log_body"), date: z.string().date(), weightKg: z.number().positive().max(500).optional(), waistCm: z.number().positive().max(300).optional(), bodyFatPercent: z.number().min(0).max(100).optional(), sleepHours: z.number().min(0).max(24).optional(), steps: z.number().int().min(0).max(100000).optional(), note: z.string().max(1000).optional() }).refine(value => Object.keys(value).some(key => !["action", "date"].includes(key))),
@@ -52,12 +52,28 @@ function verifyRequest(raw: string, request: Request) {
 
 const dayRef = (db: FirebaseFirestore.Firestore, ownerId: string, date: string) => db.doc(`users/${ownerId}/dailyLogs/${date}`);
 const entryRef = (db: FirebaseFirestore.Firestore, ownerId: string, date: string, entryId: string) => dayRef(db, ownerId, date).collection("entries").doc(entryId);
-const emptyNutrition = { calories: 0, protein: 0, carbs: 0, fat: 0, sugar: 0, fiber: 0, saturatedFat: 0, sodium: 0 };
 const importedNotes = (food: z.infer<typeof importedFood>) => [food.note, food.restaurant ? `餐廳：${food.restaurant}` : undefined, food.include?.length ? `包含：${food.include.join("、")}` : undefined].filter(Boolean).join("；") || undefined;
 const shiftDate = (date: string, days: number) => new Date(new Date(`${date}T12:00:00Z`).getTime() + days * 86_400_000).toISOString().slice(0, 10);
-const mealName = (meal: string) => ({ breakfast: "早餐", lunch: "午餐", dinner: "晚餐", snack: "點心", drink: "飲料", early_morning: "點心", all_day: "其他" }[meal] ?? "其他") as z.infer<typeof foodEntry>["meal"];
+const mealName = (meal: string) => ({ breakfast: "早餐", lunch: "午餐", dinner: "晚餐", snack: "點心", drink: "飲料", late_night: "宵夜", early_morning: "點心", all_day: "其他" }[meal] ?? "其他") as z.infer<typeof foodEntry>["meal"];
 const datesBetween = (startDate: string, endDate: string) => { const dates: string[] = []; for (let date = startDate; date <= endDate; date = shiftDate(date, 1)) { dates.push(date); if (dates.length > 90) throw new Error("date_range_too_large"); } return dates; };
-const totalForEntries = (entries: FirebaseFirestore.QueryDocumentSnapshot[]) => entries.reduce((sum, document) => { const data = document.data(); for (const key of ["calories", "protein", "carbs", "fat", "sugar", "fiber", "saturatedFat", "sodium"] as const) sum[key] += Number(data[key] ?? 0); return sum; }, { calories: 0, protein: 0, carbs: 0, fat: 0, sugar: 0, fiber: 0, saturatedFat: 0, sodium: 0 });
+const safeNumber = (value: unknown) => typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
+const totalForEntries = (entries: FirebaseFirestore.QueryDocumentSnapshot[]) => entries.reduce((sum, document) => {
+  const data = document.data(); const canonical = data.caloriesKcal !== undefined; const servings = canonical ? safeNumber(data.servings || 1) : 1;
+  const value = (canonicalValue: unknown, legacyValue: unknown) => safeNumber(canonical ? canonicalValue : legacyValue) * servings;
+  sum.caloriesKcal += value(data.caloriesKcal, data.calories);
+  sum.proteinG += value(data.proteinG, data.protein);
+  sum.carbsG += value(data.carbsG, data.carbs);
+  sum.fatG += value(data.fatG, data.fat);
+  sum.sugarG += value(data.sugarG, data.sugar);
+  sum.fiberG += value(data.fiberG, data.fiber);
+  sum.saturatedFatG += value(data.saturatedFatG, data.saturatedFat);
+  sum.transFatG += value(data.transFatG, 0);
+  sum.sodiumMg += value(data.sodiumMg, data.sodium);
+  sum.potassiumMg += value(data.potassiumMg, 0);
+  sum.cholesterolMg += value(data.cholesterolMg, 0);
+  sum.caffeineMg += value(data.caffeineMg, 0);
+  return sum;
+}, { caloriesKcal: 0, proteinG: 0, carbsG: 0, fatG: 0, sugarG: 0, fiberG: 0, saturatedFatG: 0, transFatG: 0, sodiumMg: 0, potassiumMg: 0, cholesterolMg: 0, caffeineMg: 0 });
 
 export async function POST(request: Request) {
   const raw = await request.text();
@@ -79,7 +95,8 @@ export async function POST(request: Request) {
       const entries = input.entries.map(item => {
         const id = item.id ?? crypto.randomUUID();
         const nutrition = item.nutrition;
-        const entry = { id, name: item.name, meal: item.meal, calories: nutrition.calories * item.portion, protein: nutrition.protein * item.portion, carbs: nutrition.carbs * item.portion, fat: nutrition.fat * item.portion, sugar: nutrition.sugar * item.portion, fiber: nutrition.fiber * item.portion, saturatedFat: nutrition.saturatedFat * item.portion, sodium: nutrition.sodium * item.portion, portion: item.portion, unit: item.unit, hydrationMl: item.hydrationMl, time: item.time, source: item.source, confidence: item.confidence, notes: item.notes, createdAt: now, updatedAt: now };
+        const servings = item.servings ?? item.portion ?? 1;
+        const entry = { id, name: item.name, brand: item.brand ?? null, category: item.category ?? null, mealType: item.meal, servings, servingWeightG: item.servingWeightG ?? null, caloriesKcal: nutrition.calories, proteinG: nutrition.protein, carbsG: nutrition.carbs, fatG: nutrition.fat, sugarG: nutrition.sugar, fiberG: nutrition.fiber, saturatedFatG: nutrition.saturatedFat, transFatG: nutrition.transFat, sodiumMg: nutrition.sodium, potassiumMg: nutrition.potassium, cholesterolMg: nutrition.cholesterol, caffeineMg: nutrition.caffeine, hydrationMl: item.hydrationMl, time: item.time, source: item.source, confidence: item.confidence, notes: item.notes ?? null, createdAt: now, updatedAt: now };
         batch.set(entryRef(db, ownerId, input.date, id), entry, { merge: true });
         return entry;
       });
@@ -87,13 +104,14 @@ export async function POST(request: Request) {
       return Response.json({ ok: true, action: input.action, entries });
     }
     if (input.action === "amend_food") {
-      const { nutrition: finalNutrition, ...changes } = input.changes;
+      const { nutrition: finalNutrition, portion, ...changes } = input.changes;
       if (changes.hydrationMl !== undefined) {
         const current = await entryRef(db, ownerId, input.date, input.entryId).get();
         const delta = changes.hydrationMl - Number(current.data()?.hydrationMl ?? 0);
         if (delta) await dayRef(db, ownerId, input.date).set({ date: input.date, waterMl: FieldValue.increment(delta), updatedAt: now, createdAt: now }, { merge: true });
       }
-      await entryRef(db, ownerId, input.date, input.entryId).set({ ...changes, ...(finalNutrition ?? {}), updatedAt: now }, { merge: true });
+      const nutritionChanges = finalNutrition ? { caloriesKcal: finalNutrition.calories, proteinG: finalNutrition.protein, carbsG: finalNutrition.carbs, fatG: finalNutrition.fat, sugarG: finalNutrition.sugar, fiberG: finalNutrition.fiber, saturatedFatG: finalNutrition.saturatedFat, transFatG: finalNutrition.transFat, sodiumMg: finalNutrition.sodium, potassiumMg: finalNutrition.potassium, cholesterolMg: finalNutrition.cholesterol, caffeineMg: finalNutrition.caffeine } : {};
+      await entryRef(db, ownerId, input.date, input.entryId).set({ ...changes, ...(portion !== undefined && changes.servings === undefined ? { servings: portion } : {}), ...nutritionChanges, updatedAt: now }, { merge: true });
       return Response.json({ ok: true, action: input.action, entryId: input.entryId });
     }
     if (input.action === "delete_food") {
@@ -105,7 +123,12 @@ export async function POST(request: Request) {
     }
     if (input.action === "upsert_food") {
       const id = input.food.id ?? crypto.randomUUID();
-      await db.doc(`users/${ownerId}/foods/${id}`).set({ ...input.food, id, useCount: 0, createdAt: now, updatedAt: now }, { merge: true });
+      const nutrition = input.food.nutrition;
+      await db.doc(`users/${ownerId}/foods/${id}`).set({
+        id, name: input.food.name, brand: input.food.brand ?? null, category: input.food.category ?? null, servingWeightG: input.food.servingWeightG ?? null,
+        nutrition: { caloriesKcal: nutrition.calories, proteinG: nutrition.protein, carbsG: nutrition.carbs, fatG: nutrition.fat, fiberG: nutrition.fiber, sugarG: nutrition.sugar, saturatedFatG: nutrition.saturatedFat, transFatG: nutrition.transFat, sodiumMg: nutrition.sodium, potassiumMg: nutrition.potassium, cholesterolMg: nutrition.cholesterol, caffeineMg: nutrition.caffeine },
+        favorite: input.food.favorite, notes: input.food.notes ?? null, useCount: 0, createdAt: now, updatedAt: now,
+      }, { merge: true });
       return Response.json({ ok: true, action: input.action, foodId: id });
     }
     if (input.action === "find_foods") {
@@ -151,29 +174,53 @@ export async function POST(request: Request) {
           ...record.foods.map((food, index) => ({
             id: `historic-food-${record.date}-${index}`,
             name: food.name,
-            meal: "其他" as const,
-            calories: food.calories ?? food.estimated_calories ?? 0,
-            protein: food.protein_g ?? 0,
-            carbs: food.carbs_g ?? 0,
-            fat: food.fat_g ?? 0,
-            sodium: food.sodium_mg ?? 0,
-            portion: food.volume_ml ?? (typeof food.quantity === "number" ? food.quantity : 1),
-            unit: food.volume_ml ? "ml" : typeof food.quantity === "string" ? food.quantity : "份",
+            brand: food.brand ?? null,
+            category: food.category ?? null,
+            mealType: "其他" as const,
+            servings: 1,
+            servingWeightG: food.serving_weight_g ?? null,
+            caloriesKcal: food.calories ?? food.estimated_calories ?? 0,
+            proteinG: food.protein_g ?? 0,
+            carbsG: food.carbs_g ?? 0,
+            fatG: food.fat_g ?? 0,
+            fiberG: food.fiber_g ?? 0,
+            sugarG: food.sugar_g ?? 0,
+            saturatedFatG: food.saturated_fat_g ?? 0,
+            transFatG: food.trans_fat_g ?? null,
+            sodiumMg: food.sodium_mg ?? 0,
+            potassiumMg: food.potassium_mg ?? null,
+            cholesterolMg: food.cholesterol_mg ?? null,
+            caffeineMg: food.caffeine_mg ?? 0,
+            hydrationMl: food.volume_ml ?? 0,
             notes: importedNotes(food),
           })),
           ...record.coffee.map((coffee, index) => ({
             id: `historic-coffee-${record.date}-${index}`,
             name: coffee.description ?? `${coffee.type}${coffee.count ? ` ×${coffee.count}` : coffee.volume_ml ? ` ${coffee.volume_ml} ml` : ""}`,
-            meal: "飲料" as const,
-            ...emptyNutrition,
-            portion: coffee.count ?? 1,
-            unit: coffee.volume_ml ? "ml" : "杯",
+            brand: null,
+            category: "飲料",
+            mealType: "飲料" as const,
+            servings: 1,
+            servingWeightG: null,
+            caloriesKcal: 0,
+            proteinG: 0,
+            carbsG: 0,
+            fatG: 0,
+            fiberG: 0,
+            sugarG: 0,
+            saturatedFatG: 0,
+            transFatG: null,
+            sodiumMg: 0,
+            potassiumMg: null,
+            cholesterolMg: null,
+            caffeineMg: 0,
+            hydrationMl: coffee.volume_ml ?? 0,
             notes: coffee.description ? `咖啡／飲品紀錄：${coffee.type}` : undefined,
           })),
         ];
         for (const item of importedItems) {
           const { id, notes, ...entry } = item;
-          batch.set(entryRef(db, ownerId, record.date, id), { id, ...emptyNutrition, ...entry, source: "manual_estimated", confidence: entry.calories > 0 || entry.protein > 0 ? "medium" : "low", time: "歷史匯入", ...(notes ? { notes } : {}), createdAt: now, updatedAt: now }, { merge: true });
+          batch.set(entryRef(db, ownerId, record.date, id), { id, ...entry, source: "manual_estimated", confidence: entry.caloriesKcal > 0 || entry.proteinG > 0 ? "medium" : "low", time: "歷史匯入", notes: notes ?? null, createdAt: now, updatedAt: now }, { merge: true });
           foodCount += 1;
         }
       }
@@ -209,9 +256,9 @@ export async function POST(request: Request) {
           const notes = [item.note, item.quantity_note, item.components?.length ? `包含：${item.components.join("、")}` : undefined].filter(Boolean).join("；") || undefined;
           const id = `historic-export-${record.date}-${index}`;
           batch.set(entryRef(db, ownerId, record.date, id), {
-            id, name: item.name, meal,
-            calories: nutrition?.calories_kcal ?? 0, protein: nutrition?.protein_g ?? 0, carbs: nutrition?.carbohydrate_g ?? 0, fat: nutrition?.fat_g ?? 0, sugar: nutrition?.sugar_g ?? 0, fiber: nutrition?.fiber_g ?? 0, saturatedFat: nutrition?.saturated_fat_g ?? 0, sodium: nutrition?.sodium_mg ?? 0,
-            portion: item.volume_ml ?? (typeof item.quantity === "number" ? item.quantity : 1), unit: item.volume_ml ? "ml" : item.weight_g ? "g" : typeof item.quantity === "string" ? item.quantity : "份", time: "歷史匯入", source: nutrition?.estimated === false ? "nutrition_label" : "ai_estimated", confidence: nutrition?.estimated === false ? "high" : "medium", ...(notes ? { notes } : {}), createdAt: now, updatedAt: now,
+            id, name: item.name, brand: null, category: null, mealType: meal, servings: 1, servingWeightG: item.weight_g ?? null,
+            caloriesKcal: nutrition?.calories_kcal ?? 0, proteinG: nutrition?.protein_g ?? 0, carbsG: nutrition?.carbohydrate_g ?? 0, fatG: nutrition?.fat_g ?? 0, sugarG: nutrition?.sugar_g ?? 0, fiberG: nutrition?.fiber_g ?? 0, saturatedFatG: nutrition?.saturated_fat_g ?? 0, transFatG: nutrition?.trans_fat_g ?? null, sodiumMg: nutrition?.sodium_mg ?? 0, potassiumMg: nutrition?.potassium_mg ?? null, cholesterolMg: nutrition?.cholesterol_mg ?? null, caffeineMg: nutrition?.caffeine_mg ?? 0,
+            hydrationMl: item.volume_ml ?? 0, time: "歷史匯入", source: nutrition?.estimated === false ? "nutrition_label" : "ai_estimated", confidence: nutrition?.estimated === false ? "high" : "medium", notes: notes ?? null, createdAt: now, updatedAt: now,
           });
           importedEntries += 1;
         }

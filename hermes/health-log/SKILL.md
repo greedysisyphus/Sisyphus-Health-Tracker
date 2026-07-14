@@ -1,7 +1,7 @@
 ---
 name: health-log
 description: 將飲食、喝水、體重、步數與睡眠安全寫入 Jovi 的健康追蹤網站；也可查詢、更正與分析既有紀錄。
-version: 1.3.0
+version: 1.4.0
 author: Jovi
 platforms: [macos]
 required_environment_variables:
@@ -46,7 +46,7 @@ printf '%s' '<JSON>' | python3 scripts/health_api.py
 2. Use `Asia/Taipei` for dates. If the user does not specify a date, use today.
 3. Prefer a package nutrition label. Restaurant information is second-best. Photos and restaurant meals without a label are estimates and must set `source` to `ai_estimated` and explain assumptions in the Discord response.
 4. Before `amend_food` or `delete_food`, call `get_daily_summary`, identify the exact `entryId`, and tell the user which entry will change. Ask a follow-up question if more than one entry might match.
-5. For a portion correction, recalculate calories, protein, carbs, fat, sugar, fiber, saturatedFat, and sodium for the final consumed portion before using `amend_food`.
+5. For a serving correction, use `servings` only. Nutrition values are always **per serving**; never multiply them yourself before calling the API.
 6. After a successful write, call `get_daily_summary` once and reply concisely in Traditional Chinese with the change and daily calories, protein, sodium, and water. The only exception is the fast path below: it permits one confirmation call, but does not require it if the write response already returns the updated daily total.
 7. Never expose `HERMES_API_SECRET`, use browser automation, or send health data anywhere except `HEALTH_TRACKER_URL`.
 8. 補齊歷史營養時，先逐日呼叫 `get_daily_summary`，再以 `amend_food` 補每筆資料。包裝標示優先；無標示時可使用可信食物資料庫或合理份量估算，必須標為 `ai_estimated` 與 `low`／`medium` 信心，並在回覆中說明。
@@ -58,7 +58,7 @@ printf '%s' '<JSON>' | python3 scripts/health_api.py
 當使用者在同一則 Discord 訊息附上 1–10 張圖片，並說明「請分析／記錄」、「早餐／午餐／晚餐」或明確表示要登記時，將所有附圖視為**同一餐的資料組**。不要逐張各自當成一餐，也不要把同一食物的餐點照與營養標示重複登記。
 
 1. 先檢視該則訊息的所有圖片一次，辨識每張照片的角色：完整餐點、包裝正面、營養標示、剩餘食物／實際食用份量。每張圖最多使用一次 `vision_analyze`；不可反覆辨識同一張圖。
-2. 優先使用清楚可讀的包裝營養標示；依使用者實際吃下的比例換算。這類 entry 設為 `source: package_label`、`confidence: high`。
+2. 優先使用清楚可讀的包裝營養標示；依使用者實際吃下的比例換算。這類 entry 設為 `source: nutrition_label`、`confidence: high`。
 3. 沒有標示的餐點，依照片可見內容與合理份量估算熱量、蛋白質、碳水、脂肪與鈉；entry 設為 `source: ai_estimated`、`confidence: medium` 或 `low`，並在 `notes` 說明估算依據。不可把估算寫成精確值。
 4. **嚴禁使用 `web_search`、瀏覽器、自動搜尋店家菜單、舊對話或檔案。** 照片和訊息已足夠時直接估算；不夠時先問**一個最必要的問題**。若使用者已說「全部吃完」或照片顯示明確包裝份量，毋須再問。
 5. 將整餐的所有食物整理為同一次 `log_food` 的 `entries` 陣列，一次寫入；最多再呼叫一次 `get_daily_summary` 確認。不可對每一張圖片各做一次 API 寫入，也不可在寫入前反覆讀取摘要。
@@ -91,9 +91,13 @@ printf '%s' '<JSON>' | python3 scripts/health_api.py
 - `import_history`: 一次匯入舊資料。JSON 放在 `data` 內，保留所有食物名稱／份量；缺少營養標示的食物以 0 記錄並標為低信心，不能自行假造精確營養數字。
 - `shift_imported_history`: 僅限修正剛匯入的整批歷史資料日期。必須明確列出來源日期、飲水日期、身體資料日期，以及需要保留原日期的既有資料；不可用於一般日常紀錄。
 
-`log_food` 的每筆 entry 必須把營養值放在 `nutrition` 物件內；API 會將其中數值乘以 `portion` 後儲存。因此，若 `portion` 使用 200 ml，`nutrition` 必須填「每 1 ml」數值；若已算好整份營養，優先令 `portion: 1`、用 `unit`／`notes` 描述實際份量，避免被重複放大。
+`log_food` 的每筆 entry 必須把營養值放在 `nutrition` 物件內，且全部都是**每份**的數字。使用 `servings` 表示實際吃了幾份；網站與 API 會在每日總計時統一乘上份數。不要傳舊的 `portion` 或 `unit`。
 
-`amend_food` 的 `changes.nutrition` 是「這次最終吃下的整份營養值」，不必也不可再乘以 `portion`。
+每筆 food entry 請盡量提供：`brand`（未知為 `null`）、`category`（未知為 `null`）、`servings`（預設 1）、`servingWeightG`（未知為 `null`）、`notes`（未知為 `null`）。`meal` 僅可為：早餐、午餐、晚餐、點心、飲料、宵夜、其他。
+
+`nutrition` 完整欄位為：`calories`、`protein`、`carbs`、`fat`、`fiber`、`sugar`、`saturatedFat`、`sodium`、`caffeine`（以上未知時填 0）；`transFat`、`potassium`、`cholesterol`（未知時填 `null`）。單位分別是 kcal、g、g、g、g、g、g、mg、mg、g、mg、mg。不要使用空字串或省略必填的主要營養欄位。
+
+`amend_food` 的 `changes.nutrition` 也是每份營養；若只改份數，只傳 `servings` 即可。修改時不會改到同名的常用食物。
 
 `hydrationMl` 是該筆飲品對每日總水分的貢獻；更正或刪除飲品時，API 會自動同步調整總水分。
 

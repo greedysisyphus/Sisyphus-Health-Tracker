@@ -1,6 +1,6 @@
 import { collection, deleteDoc, doc, getDoc, getDocs, limit, orderBy, query, serverTimestamp, setDoc } from "firebase/firestore";
 import { db } from "../lib/firebase";
-import { calculateDailyTotals, type FoodEntry, type Nutrition } from "../lib/nutrition";
+import { calculateDailyNutrition, normalizeFoodRecord, type FoodEntry, type Nutrition } from "../lib/nutrition";
 import type { BodyLog, DailyLog } from "../types/models";
 
 const dailyPath = (userId: string, date: string) => `users/${userId}/dailyLogs/${date}`;
@@ -10,7 +10,7 @@ export type DailyOverview = { date: string; waterMl: number; entries: FoodEntry[
 export async function listDailyEntries(userId: string, date: string): Promise<FoodEntry[]> {
   if (!db) return [];
   const snapshot = await getDocs(collection(db, dailyPath(userId, date), "entries"));
-  return snapshot.docs.map(item => ({ id: item.id, ...item.data() } as FoodEntry)).sort((a, b) => a.time.localeCompare(b.time));
+  return snapshot.docs.map(item => normalizeFoodRecord(item.data(), item.id)).sort((a, b) => a.time.localeCompare(b.time));
 }
 
 export async function saveEntry(userId: string, date: string, entry: FoodEntry): Promise<void> {
@@ -59,17 +59,22 @@ export async function listDailyOverviews(userId: string, count = 30): Promise<Da
   return Promise.all(daily.docs.map(async item => {
     const data = item.data() as DailyLog;
     const [entries, body] = await Promise.all([listDailyEntries(userId, data.date), getBodyLog(userId, data.date)]);
-    return { date: data.date, waterMl: data.waterMl ?? 0, entries, total: calculateDailyTotals(entries), weightKg: body?.weightKg, steps: body?.steps };
+    return { date: data.date, waterMl: data.waterMl ?? 0, entries, total: calculateDailyNutrition(entries), weightKg: body?.weightKg, steps: body?.steps };
   }));
 }
 
-export type SavedFoodSummary = { id: string; name: string; brand?: string; category: string; nutrition: { calories: number; protein: number; carbs: number; fat: number }; favorite?: boolean };
-export type SavedFoodInput = SavedFoodSummary & { baseAmount: number; unit: string; nutrition: SavedFoodSummary["nutrition"] & { sugar: number; fiber: number; saturatedFat: number; sodium: number }; notes?: string };
+export type SavedFoodSummary = { id: string; name: string; brand: string | null; category: string | null; servingWeightG: number | null; nutrition: Nutrition; favorite?: boolean; notes: string | null };
+export type SavedFoodInput = SavedFoodSummary;
 
 export async function listFoods(userId: string): Promise<SavedFoodSummary[]> {
   if (!db) return [];
   const snapshot = await getDocs(query(collection(db, `users/${userId}/foods`), orderBy("name"), limit(100)));
-  return snapshot.docs.map(item => ({ id: item.id, ...item.data() } as SavedFoodSummary));
+  return snapshot.docs.map(item => {
+    const data = item.data();
+    const nestedNutrition = data.nutrition && typeof data.nutrition === "object" ? data.nutrition as Record<string, unknown> : {};
+    const normalized = normalizeFoodRecord({ ...data, ...nestedNutrition, id: item.id, mealType: "其他", servings: 1, servingWeightG: data.servingWeightG ?? data.baseAmount, notes: data.notes ?? null }, item.id);
+    return { id: item.id, name: normalized.name, brand: normalized.brand, category: normalized.category, servingWeightG: normalized.servingWeightG, nutrition: { caloriesKcal: normalized.caloriesKcal, proteinG: normalized.proteinG, carbsG: normalized.carbsG, fatG: normalized.fatG, fiberG: normalized.fiberG, sugarG: normalized.sugarG, saturatedFatG: normalized.saturatedFatG, transFatG: normalized.transFatG, sodiumMg: normalized.sodiumMg, potassiumMg: normalized.potassiumMg, cholesterolMg: normalized.cholesterolMg, caffeineMg: normalized.caffeineMg }, favorite: Boolean(data.favorite), notes: normalized.notes };
+  });
 }
 
 export async function saveSavedFood(userId: string, food: SavedFoodInput): Promise<void> {
