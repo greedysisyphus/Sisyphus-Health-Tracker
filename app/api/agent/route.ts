@@ -18,6 +18,13 @@ const importPayload = z.object({
   analysis: z.record(z.string(), z.union([z.string(), z.number()])).optional(),
   records: z.array(z.object({ date: z.string().date(), water_ml: z.number().min(0).optional(), weight_kg: z.number().positive().optional(), steps: z.number().int().min(0).optional(), foods: z.array(importedFood).default([]), coffee: z.array(importedCoffee).default([]) })).min(1),
 });
+const exportNutrition = z.object({ calories_kcal: z.number().min(0).optional(), protein_g: z.number().min(0).optional(), fat_g: z.number().min(0).optional(), carbohydrate_g: z.number().min(0).optional(), sugar_g: z.number().min(0).optional(), fiber_g: z.number().min(0).optional(), saturated_fat_g: z.number().min(0).optional(), sodium_mg: z.number().min(0).optional(), estimated: z.boolean().optional() }).passthrough();
+const exportItem = z.object({ name: z.string().min(1), quantity: z.union([z.number(), z.string()]).optional(), volume_ml: z.number().positive().optional(), weight_g: z.number().positive().optional(), note: z.string().max(1000).optional(), quantity_note: z.string().max(1000).optional(), components: z.array(z.string()).optional(), nutrition: exportNutrition.optional() }).passthrough();
+const historyExport = z.object({
+  profile: z.object({ height_cm: z.number().positive().optional(), starting_weight_kg: z.number().positive().optional(), goal_weight_kg: z.number().positive().optional(), average_steps_per_day: z.number().int().min(0).optional() }).optional(),
+  targets: z.record(z.string(), z.unknown()).optional(),
+  daily_records: z.array(z.object({ date: z.string().date(), weight_kg: z.number().positive().nullable().optional(), water_ml: z.number().min(0).nullable().optional(), steps: z.number().int().min(0).nullable().optional(), steps_note: z.string().max(1000).optional(), meals: z.array(z.object({ meal: z.string().min(1), items: z.array(exportItem) })).default([]), beverages: z.array(exportItem).default([]) })).min(1),
+});
 const actionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("log_food"), date: z.string().date(), entries: z.array(foodEntry).min(1) }),
   z.object({ action: z.literal("amend_food"), date: z.string().date(), entryId: z.string().min(1), changes: foodEntry.partial().omit({ id: true }).refine(value => Object.keys(value).length > 0) }),
@@ -27,6 +34,7 @@ const actionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("log_body"), date: z.string().date(), weightKg: z.number().positive().max(500).optional(), waistCm: z.number().positive().max(300).optional(), bodyFatPercent: z.number().min(0).max(100).optional(), sleepHours: z.number().min(0).max(24).optional(), steps: z.number().int().min(0).max(100000).optional(), note: z.string().max(1000).optional() }).refine(value => Object.keys(value).some(key => !["action", "date"].includes(key))),
   z.object({ action: z.literal("get_daily_summary"), date: z.string().date() }),
   z.object({ action: z.literal("import_history"), data: importPayload }),
+  z.object({ action: z.literal("replace_history_export"), data: historyExport, preserveExistingWaterDates: z.array(z.string().date()).default([]) }),
   z.object({ action: z.literal("shift_imported_history"), dates: z.array(z.string().date()).min(1), waterDates: z.array(z.string().date()).default([]), bodyDates: z.array(z.string().date()).default([]), days: z.number().int().min(-365).max(365), preserveSourceDates: z.array(z.string().date()).default([]) }),
 ]);
 
@@ -45,6 +53,7 @@ const entryRef = (db: FirebaseFirestore.Firestore, ownerId: string, date: string
 const emptyNutrition = { calories: 0, protein: 0, carbs: 0, fat: 0, sugar: 0, fiber: 0, saturatedFat: 0, sodium: 0 };
 const importedNotes = (food: z.infer<typeof importedFood>) => [food.note, food.restaurant ? `餐廳：${food.restaurant}` : undefined, food.include?.length ? `包含：${food.include.join("、")}` : undefined].filter(Boolean).join("；") || undefined;
 const shiftDate = (date: string, days: number) => new Date(new Date(`${date}T12:00:00Z`).getTime() + days * 86_400_000).toISOString().slice(0, 10);
+const mealName = (meal: string) => ({ breakfast: "早餐", lunch: "午餐", dinner: "晚餐", snack: "點心", drink: "飲料", early_morning: "點心", all_day: "其他" }[meal] ?? "其他") as z.infer<typeof foodEntry>["meal"];
 
 export async function POST(request: Request) {
   const raw = await request.text();
@@ -151,6 +160,46 @@ export async function POST(request: Request) {
       }
       await batch.commit();
       return Response.json({ ok: true, action: input.action, importedDays: imported.records.length, importedEntries: foodCount });
+    }
+    if (input.action === "replace_history_export") {
+      const batch = db.batch();
+      const records = input.data.daily_records;
+      let importedEntries = 0;
+      for (const record of records) {
+        const entries = await dayRef(db, ownerId, record.date).collection("entries").get();
+        for (const document of entries.docs) if (document.id.startsWith("historic-")) batch.delete(document.ref);
+        const dailyData: Record<string, unknown> = { date: record.date, updatedAt: now, createdAt: now };
+        if (record.water_ml !== undefined && record.water_ml !== null) dailyData.waterMl = record.water_ml;
+        else if (!input.preserveExistingWaterDates.includes(record.date)) dailyData.waterMl = FieldValue.delete();
+        batch.set(dayRef(db, ownerId, record.date), dailyData, { merge: true });
+        if (record.weight_kg !== undefined || record.steps !== undefined) {
+          if (record.weight_kg !== null || record.steps !== null) {
+            const bodyData: Record<string, unknown> = { date: record.date, updatedAt: now, createdAt: now };
+            if (record.weight_kg !== undefined && record.weight_kg !== null) bodyData.weightKg = record.weight_kg;
+            if (record.steps !== undefined && record.steps !== null) bodyData.steps = record.steps;
+            if (record.steps_note) bodyData.note = record.steps_note;
+            batch.set(db.doc(`users/${ownerId}/bodyLogs/${record.date}`), bodyData, { merge: true });
+          } else batch.delete(db.doc(`users/${ownerId}/bodyLogs/${record.date}`));
+        }
+        const items = [
+          ...record.beverages.map(item => ({ item, meal: "飲料" as const })),
+          ...record.meals.flatMap(group => group.items.map(item => ({ item, meal: mealName(group.meal) }))),
+        ];
+        for (const [index, { item, meal }] of items.entries()) {
+          const nutrition = item.nutrition;
+          const notes = [item.note, item.quantity_note, item.components?.length ? `包含：${item.components.join("、")}` : undefined].filter(Boolean).join("；") || undefined;
+          const id = `historic-export-${record.date}-${index}`;
+          batch.set(entryRef(db, ownerId, record.date, id), {
+            id, name: item.name, meal,
+            calories: nutrition?.calories_kcal ?? 0, protein: nutrition?.protein_g ?? 0, carbs: nutrition?.carbohydrate_g ?? 0, fat: nutrition?.fat_g ?? 0, sugar: nutrition?.sugar_g ?? 0, fiber: nutrition?.fiber_g ?? 0, saturatedFat: nutrition?.saturated_fat_g ?? 0, sodium: nutrition?.sodium_mg ?? 0,
+            portion: item.volume_ml ?? (typeof item.quantity === "number" ? item.quantity : 1), unit: item.volume_ml ? "ml" : item.weight_g ? "g" : typeof item.quantity === "string" ? item.quantity : "份", time: "歷史匯入", source: nutrition?.estimated === false ? "nutrition_label" : "ai_estimated", confidence: nutrition?.estimated === false ? "high" : "medium", ...(notes ? { notes } : {}), createdAt: now, updatedAt: now,
+          });
+          importedEntries += 1;
+        }
+      }
+      if (input.data.profile) batch.set(db.doc(`users/${ownerId}`), { heightCm: input.data.profile.height_cm, targetWeightKg: input.data.profile.goal_weight_kg, dailyStepsAverage: input.data.profile.average_steps_per_day, startingWeightKg: input.data.profile.starting_weight_kg, targets: input.data.targets, updatedAt: now, createdAt: now }, { merge: true });
+      await batch.commit();
+      return Response.json({ ok: true, action: input.action, importedDays: records.length, importedEntries });
     }
     if (input.action === "shift_imported_history") {
       const batch = db.batch();
