@@ -73,9 +73,28 @@ export default function Home() {
     await saveBodyLog(user.uid, { date, weightKg: value });
     setWeightKg(value);
   };
-  const saveCommonFood = async (food: SavedFoodInput) => { if (!user) return; await saveSavedFood(user.uid, food); setSavedFoods(await listFoods(user.uid)); setFoodEditor(undefined); };
-  const deleteCommonFood = async (foodId: string) => { if (!user || !confirm("確定刪除這項常用食物？")) return; await removeSavedFood(user.uid, foodId); setSavedFoods(await listFoods(user.uid)); };
-  const saveEntryAsCommonFood = async (entry: FoodEntry) => { if (!user) return; await saveSavedFood(user.uid, { id: crypto.randomUUID(), name: entry.name, category: entry.meal, baseAmount: entry.portion, unit: entry.unit, nutrition: { calories: entry.calories, protein: entry.protein, carbs: entry.carbs, fat: entry.fat, sugar: entry.sugar, fiber: entry.fiber, saturatedFat: entry.saturatedFat, sodium: entry.sodium }, favorite: true, notes: entry.notes }); setSavedFoods(await listFoods(user.uid)); setNotice(`已將「${entry.name}」加入常用食物。`); };
+  const saveCommonFood = async (food: SavedFoodInput) => {
+    if (!user) return;
+    try { await saveSavedFood(user.uid, food); setSavedFoods(await listFoods(user.uid)); setFoodEditor(undefined); setNotice(`已儲存「${food.name}」。`); }
+    catch { setNotice("儲存常用食物失敗，請再試一次。") }
+  };
+  const deleteCommonFood = async (foodId: string) => {
+    if (!user || !confirm("確定刪除這項常用食物？")) return;
+    try { await removeSavedFood(user.uid, foodId); setSavedFoods(await listFoods(user.uid)); }
+    catch { setNotice("刪除常用食物失敗，請再試一次。") }
+  };
+  const saveEntryAsCommonFood = async (entry: FoodEntry) => {
+    if (!user) return;
+    const numberOrZero = (value: number | undefined) => Number.isFinite(value) ? value! : 0;
+    try {
+      await saveSavedFood(user.uid, {
+        id: crypto.randomUUID(), name: entry.name, category: entry.meal, baseAmount: numberOrZero(entry.portion) || 1, unit: entry.unit || "份",
+        nutrition: { calories: numberOrZero(entry.calories), protein: numberOrZero(entry.protein), carbs: numberOrZero(entry.carbs), fat: numberOrZero(entry.fat), sugar: numberOrZero(entry.sugar), fiber: numberOrZero(entry.fiber), saturatedFat: numberOrZero(entry.saturatedFat), sodium: numberOrZero(entry.sodium) },
+        favorite: true, ...(entry.notes ? { notes: entry.notes } : {})
+      });
+      setSavedFoods(await listFoods(user.uid)); setNotice(`已將「${entry.name}」加入常用食物。`);
+    } catch { setNotice(`「${entry.name}」儲存失敗，請再試一次。`); }
+  };
   const signIn = async () => {
     if (!auth || !googleProvider) return;
     try { await signInWithPopup(auth, googleProvider); } catch { setNotice("登入未完成，請確認 Firebase 已啟用 Google 登入，並已加入目前網站網域。"); }
