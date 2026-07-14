@@ -156,6 +156,7 @@ export async function POST(request: Request) {
       let movedEntries = 0;
       for (const sourceDate of input.dates) {
         const targetDate = shiftDate(sourceDate, input.days);
+        batch.set(dayRef(db, ownerId, targetDate), { date: targetDate, updatedAt: now, createdAt: now }, { merge: true });
         const sourceEntries = await dayRef(db, ownerId, sourceDate).collection("entries").get();
         for (const document of sourceEntries.docs) {
           if (!document.id.startsWith("historic-")) continue;
