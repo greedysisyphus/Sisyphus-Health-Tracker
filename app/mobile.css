@@ -3,6 +3,10 @@
 .nav-icon { width: 18px; height: 18px; vertical-align: -4px; margin-right: 9px; }
 .bottom-nav .nav-icon { width: 20px; height: 20px; margin: 0; vertical-align: 0; }
 .analysis-choices { display: grid; gap: 10px; margin: 18px 0; }
+.analysis-choices button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; transition: transform 120ms ease, background-color 120ms ease, box-shadow 120ms ease; }
+.analysis-choices button:not(:disabled):active { transform: scale(.975); background-color: #274d44; box-shadow: inset 0 2px 5px #102d2638; }
+.analysis-choices .parse-btn:not(:disabled):active { background-color: var(--sage-pale); }
+.analysis-choices button:disabled { cursor: wait; opacity: .55; }
 .export-divider { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; margin: 22px 0 0; }
 .export-divider::before, .export-divider::after { content: ""; height: 1px; background: var(--line); flex: 1; }
 .daily-secondary { display: flex; flex-wrap: wrap; gap: 8px; margin: -8px 0 22px; }
