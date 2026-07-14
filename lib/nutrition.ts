@@ -1,0 +1,8 @@
+export type FoodEntry = { id: string; name: string; meal: "早餐"|"午餐"|"晚餐"|"點心"|"飲料"|"其他"; calories: number; protein: number; carbs: number; fat: number; sugar: number; fiber: number; saturatedFat: number; sodium: number; portion: number; unit: string; time: string };
+export type Nutrition = Pick<FoodEntry,"calories"|"protein"|"carbs"|"fat"|"sugar"|"fiber"|"saturatedFat"|"sodium">;
+export const calculateNutritionByPortion=(nutrition:Nutrition,portion:number):Nutrition=>Object.fromEntries(Object.entries(nutrition).map(([k,v])=>[k,Math.round(v*portion*10)/10])) as Nutrition;
+export const calculateDailyTotals=(entries:FoodEntry[]):Nutrition=>entries.reduce<Nutrition>((t,e)=>({calories:t.calories+e.calories,protein:t.protein+e.protein,carbs:t.carbs+e.carbs,fat:t.fat+e.fat,sugar:t.sugar+e.sugar,fiber:t.fiber+e.fiber,saturatedFat:t.saturatedFat+e.saturatedFat,sodium:t.sodium+e.sodium}),{calories:0,protein:0,carbs:0,fat:0,sugar:0,fiber:0,saturatedFat:0,sodium:0});
+export const calculateRemainingCalories=(goal:number,consumed:number)=>goal-consumed;
+export const calculateSevenDayAverage=(weights:(number|null)[])=>{const values=weights.filter((w):w is number=>w!==null);return values.length?Math.round(values.reduce((a,b)=>a+b,0)/values.length*10)/10:null};
+export const formatLocalDate=(date:Date,timeZone="Asia/Taipei")=>new Intl.DateTimeFormat("en-CA",{timeZone,year:"numeric",month:"2-digit",day:"2-digit"}).format(date);
+export const getWeekRange=(date:Date)=>{const d=new Date(date);d.setDate(d.getDate()-((d.getDay()+6)%7));const end=new Date(d);end.setDate(d.getDate()+6);return {start:formatLocalDate(d),end:formatLocalDate(end)}};
