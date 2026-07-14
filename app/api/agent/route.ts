@@ -7,6 +7,17 @@ export const runtime = "nodejs";
 
 const nutrition = z.object({ calories: z.number().min(0), protein: z.number().min(0), carbs: z.number().min(0), fat: z.number().min(0), sugar: z.number().min(0).default(0), fiber: z.number().min(0).default(0), saturatedFat: z.number().min(0).default(0), sodium: z.number().min(0).default(0) });
 const foodEntry = z.object({ id: z.string().min(1).optional(), name: z.string().min(1), meal: z.enum(["早餐", "午餐", "晚餐", "點心", "飲料", "其他"]), nutrition, portion: z.number().positive().default(1), unit: z.string().min(1).default("份"), time: z.string().default("現在"), source: z.enum(["nutrition_label", "restaurant_official", "ingredient_calculation", "database", "ai_estimated", "manual_estimated"]).default("ai_estimated"), confidence: z.enum(["high", "medium", "low"]).default("medium"), notes: z.string().max(1000).optional() });
+const importedFood = z.object({
+  name: z.string().min(1), quantity: z.union([z.number(), z.string()]).optional(), volume_ml: z.number().positive().optional(), calories: z.number().min(0).optional(), estimated_calories: z.number().min(0).optional(), protein_g: z.number().min(0).optional(), carbs_g: z.number().min(0).optional(), fat_g: z.number().min(0).optional(), sodium_mg: z.number().min(0).optional(), note: z.string().max(1000).optional(), restaurant: z.string().max(200).optional(), include: z.array(z.string().max(200)).optional(),
+}).passthrough();
+const importedCoffee = z.object({ type: z.string().min(1), count: z.number().positive().optional(), volume_ml: z.number().positive().optional(), description: z.string().max(500).optional() }).passthrough();
+const importPayload = z.object({
+  user: z.object({ height_cm: z.number().positive().optional(), weight: z.record(z.string().date(), z.number().positive()).optional(), goal_weight_kg: z.number().positive().optional(), daily_steps_avg: z.number().int().min(0).optional() }).optional(),
+  nutrition_target: z.object({ calories: z.object({ fat_loss: z.string().optional() }).optional(), protein_g: z.string().optional(), water_ml: z.string().optional() }).optional(),
+  health_goals: z.record(z.string(), z.boolean()).optional(),
+  analysis: z.record(z.string(), z.union([z.string(), z.number()])).optional(),
+  records: z.array(z.object({ date: z.string().date(), water_ml: z.number().min(0).optional(), weight_kg: z.number().positive().optional(), steps: z.number().int().min(0).optional(), foods: z.array(importedFood).default([]), coffee: z.array(importedCoffee).default([]) })).min(1),
+});
 const actionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("log_food"), date: z.string().date(), entries: z.array(foodEntry).min(1) }),
   z.object({ action: z.literal("amend_food"), date: z.string().date(), entryId: z.string().min(1), changes: foodEntry.partial().omit({ id: true }).refine(value => Object.keys(value).length > 0) }),
@@ -15,6 +26,7 @@ const actionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("log_water"), date: z.string().date(), addMl: z.number().positive().max(10000) }),
   z.object({ action: z.literal("log_body"), date: z.string().date(), weightKg: z.number().positive().max(500).optional(), waistCm: z.number().positive().max(300).optional(), bodyFatPercent: z.number().min(0).max(100).optional(), sleepHours: z.number().min(0).max(24).optional(), steps: z.number().int().min(0).max(100000).optional(), note: z.string().max(1000).optional() }).refine(value => Object.keys(value).some(key => !["action", "date"].includes(key))),
   z.object({ action: z.literal("get_daily_summary"), date: z.string().date() }),
+  z.object({ action: z.literal("import_history"), data: importPayload }),
 ]);
 
 function verifyRequest(raw: string, request: Request) {
@@ -29,6 +41,8 @@ function verifyRequest(raw: string, request: Request) {
 
 const dayRef = (db: FirebaseFirestore.Firestore, ownerId: string, date: string) => db.doc(`users/${ownerId}/dailyLogs/${date}`);
 const entryRef = (db: FirebaseFirestore.Firestore, ownerId: string, date: string, entryId: string) => dayRef(db, ownerId, date).collection("entries").doc(entryId);
+const emptyNutrition = { calories: 0, protein: 0, carbs: 0, fat: 0, sugar: 0, fiber: 0, saturatedFat: 0, sodium: 0 };
+const importedNotes = (food: z.infer<typeof importedFood>) => [food.note, food.restaurant ? `餐廳：${food.restaurant}` : undefined, food.include?.length ? `包含：${food.include.join("、")}` : undefined].filter(Boolean).join("；") || undefined;
 
 export async function POST(request: Request) {
   const raw = await request.text();
@@ -76,7 +90,64 @@ export async function POST(request: Request) {
     if (input.action === "log_body") {
       const body = Object.fromEntries(Object.entries(input).filter(([key]) => key !== "action"));
       await db.doc(`users/${ownerId}/bodyLogs/${input.date}`).set({ ...body, updatedAt: now, createdAt: now }, { merge: true });
+      await dayRef(db, ownerId, input.date).set({ date: input.date, ...(input.weightKg !== undefined ? { weightKg: input.weightKg } : {}), ...(input.steps !== undefined ? { steps: input.steps } : {}), ...(input.sleepHours !== undefined ? { sleepHours: input.sleepHours } : {}), updatedAt: now, createdAt: now }, { merge: true });
       return Response.json({ ok: true, action: input.action });
+    }
+    if (input.action === "import_history") {
+      const batch = db.batch();
+      const imported = input.data;
+      const profile = {
+        heightCm: imported.user?.height_cm,
+        targetWeightKg: imported.user?.goal_weight_kg,
+        dailyStepsAverage: imported.user?.daily_steps_avg,
+        nutritionTarget: imported.nutrition_target,
+        healthGoals: imported.health_goals,
+        analysis: imported.analysis,
+        updatedAt: now,
+        createdAt: now,
+      };
+      batch.set(db.doc(`users/${ownerId}`), profile, { merge: true });
+      let foodCount = 0;
+      for (const record of imported.records) {
+        const dailyData: Record<string, unknown> = { date: record.date, updatedAt: now, createdAt: now };
+        if (record.water_ml !== undefined) dailyData.waterMl = record.water_ml;
+        const weightKg = record.weight_kg ?? imported.user?.weight?.[record.date];
+        if (weightKg !== undefined) dailyData.weightKg = weightKg;
+        if (record.steps !== undefined) dailyData.steps = record.steps;
+        batch.set(dayRef(db, ownerId, record.date), dailyData, { merge: true });
+        if (weightKg !== undefined || record.steps !== undefined) batch.set(db.doc(`users/${ownerId}/bodyLogs/${record.date}`), { date: record.date, ...(weightKg !== undefined ? { weightKg } : {}), ...(record.steps !== undefined ? { steps: record.steps } : {}), updatedAt: now, createdAt: now }, { merge: true });
+        const importedItems = [
+          ...record.foods.map((food, index) => ({
+            id: `historic-food-${record.date}-${index}`,
+            name: food.name,
+            meal: "其他" as const,
+            calories: food.calories ?? food.estimated_calories ?? 0,
+            protein: food.protein_g ?? 0,
+            carbs: food.carbs_g ?? 0,
+            fat: food.fat_g ?? 0,
+            sodium: food.sodium_mg ?? 0,
+            portion: typeof food.quantity === "number" ? food.quantity : 1,
+            unit: food.volume_ml ? "ml" : typeof food.quantity === "string" ? food.quantity : "份",
+            notes: importedNotes(food),
+          })),
+          ...record.coffee.map((coffee, index) => ({
+            id: `historic-coffee-${record.date}-${index}`,
+            name: coffee.description ?? `${coffee.type}${coffee.count ? ` ×${coffee.count}` : coffee.volume_ml ? ` ${coffee.volume_ml} ml` : ""}`,
+            meal: "飲料" as const,
+            ...emptyNutrition,
+            portion: coffee.count ?? 1,
+            unit: coffee.volume_ml ? "ml" : "杯",
+            notes: coffee.description ? `咖啡／飲品紀錄：${coffee.type}` : undefined,
+          })),
+        ];
+        for (const item of importedItems) {
+          const { id, notes, ...entry } = item;
+          batch.set(entryRef(db, ownerId, record.date, id), { id, ...emptyNutrition, ...entry, source: "manual_estimated", confidence: entry.calories > 0 || entry.protein > 0 ? "medium" : "low", time: "歷史匯入", ...(notes ? { notes } : {}), createdAt: now, updatedAt: now }, { merge: true });
+          foodCount += 1;
+        }
+      }
+      await batch.commit();
+      return Response.json({ ok: true, action: input.action, importedDays: imported.records.length, importedEntries: foodCount });
     }
     const entries = await dayRef(db, ownerId, input.date).collection("entries").get();
     const total = entries.docs.reduce((sum, document) => {

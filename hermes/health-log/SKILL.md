@@ -59,6 +59,7 @@ printf '%s' '<JSON>' | python3 scripts/health_api.py
 - `log_water`: add water in millilitres; never overwrite a previous amount.
 - `log_body`: log any provided weight, waist, body-fat percentage, sleep hours, steps, or note.
 - `get_daily_summary`: read the source-of-truth daily entries and totals.
+- `import_history`: 一次匯入舊資料。JSON 放在 `data` 內，保留所有食物名稱／份量；缺少營養標示的食物以 0 記錄並標為低信心，不能自行假造精確營養數字。
 
 ## Procedure
 
@@ -75,6 +76,16 @@ printf '%s' '{"action":"log_water","date":"2026-07-14","addMl":500}' | python3 s
 
 ```bash
 printf '%s' '{"action":"log_body","date":"2026-07-14","weightKg":74.2,"steps":6693}' | python3 scripts/health_api.py
+```
+
+```bash
+python3 scripts/health_api.py --file /absolute/path/to/health-history.json
+```
+
+`health-history.json` 的最外層必須是：
+
+```json
+{ "action": "import_history", "data": { "records": [] } }
 ```
 
 ## Verification
