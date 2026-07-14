@@ -27,6 +27,7 @@ const actionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("log_body"), date: z.string().date(), weightKg: z.number().positive().max(500).optional(), waistCm: z.number().positive().max(300).optional(), bodyFatPercent: z.number().min(0).max(100).optional(), sleepHours: z.number().min(0).max(24).optional(), steps: z.number().int().min(0).max(100000).optional(), note: z.string().max(1000).optional() }).refine(value => Object.keys(value).some(key => !["action", "date"].includes(key))),
   z.object({ action: z.literal("get_daily_summary"), date: z.string().date() }),
   z.object({ action: z.literal("import_history"), data: importPayload }),
+  z.object({ action: z.literal("shift_imported_history"), dates: z.array(z.string().date()).min(1), waterDates: z.array(z.string().date()).default([]), bodyDates: z.array(z.string().date()).default([]), days: z.number().int().min(-365).max(365), preserveSourceDates: z.array(z.string().date()).default([]) }),
 ]);
 
 function verifyRequest(raw: string, request: Request) {
@@ -43,6 +44,7 @@ const dayRef = (db: FirebaseFirestore.Firestore, ownerId: string, date: string) 
 const entryRef = (db: FirebaseFirestore.Firestore, ownerId: string, date: string, entryId: string) => dayRef(db, ownerId, date).collection("entries").doc(entryId);
 const emptyNutrition = { calories: 0, protein: 0, carbs: 0, fat: 0, sugar: 0, fiber: 0, saturatedFat: 0, sodium: 0 };
 const importedNotes = (food: z.infer<typeof importedFood>) => [food.note, food.restaurant ? `餐廳：${food.restaurant}` : undefined, food.include?.length ? `包含：${food.include.join("、")}` : undefined].filter(Boolean).join("；") || undefined;
+const shiftDate = (date: string, days: number) => new Date(new Date(`${date}T12:00:00Z`).getTime() + days * 86_400_000).toISOString().slice(0, 10);
 
 export async function POST(request: Request) {
   const raw = await request.text();
@@ -148,6 +150,44 @@ export async function POST(request: Request) {
       }
       await batch.commit();
       return Response.json({ ok: true, action: input.action, importedDays: imported.records.length, importedEntries: foodCount });
+    }
+    if (input.action === "shift_imported_history") {
+      const batch = db.batch();
+      let movedEntries = 0;
+      for (const sourceDate of input.dates) {
+        const targetDate = shiftDate(sourceDate, input.days);
+        const sourceEntries = await dayRef(db, ownerId, sourceDate).collection("entries").get();
+        for (const document of sourceEntries.docs) {
+          if (!document.id.startsWith("historic-")) continue;
+          const data = document.data();
+          const id = document.id.replace(sourceDate, targetDate);
+          batch.set(entryRef(db, ownerId, targetDate, id), { ...data, id, updatedAt: now }, { merge: true });
+          batch.delete(document.ref);
+          movedEntries += 1;
+        }
+        if (input.waterDates.includes(sourceDate)) {
+          const source = await dayRef(db, ownerId, sourceDate).get();
+          const waterMl = source.data()?.waterMl;
+          if (typeof waterMl === "number") {
+            batch.set(dayRef(db, ownerId, targetDate), { date: targetDate, waterMl, updatedAt: now, createdAt: now }, { merge: true });
+            batch.set(dayRef(db, ownerId, sourceDate), { waterMl: FieldValue.delete(), updatedAt: now }, { merge: true });
+          }
+        }
+        if (input.bodyDates.includes(sourceDate)) {
+          const sourceBody = await db.doc(`users/${ownerId}/bodyLogs/${sourceDate}`).get();
+          if (sourceBody.exists) {
+            const body = sourceBody.data() ?? {};
+            const values = Object.fromEntries(Object.entries(body).filter(([key]) => !["date", "createdAt", "updatedAt"].includes(key)));
+            batch.set(db.doc(`users/${ownerId}/bodyLogs/${targetDate}`), { ...values, date: targetDate, updatedAt: now, createdAt: now }, { merge: true });
+            batch.set(dayRef(db, ownerId, targetDate), { date: targetDate, ...(typeof values.weightKg === "number" ? { weightKg: values.weightKg } : {}), ...(typeof values.steps === "number" ? { steps: values.steps } : {}), ...(typeof values.sleepHours === "number" ? { sleepHours: values.sleepHours } : {}), updatedAt: now, createdAt: now }, { merge: true });
+            batch.delete(sourceBody.ref);
+            batch.set(dayRef(db, ownerId, sourceDate), { weightKg: FieldValue.delete(), steps: FieldValue.delete(), sleepHours: FieldValue.delete(), updatedAt: now }, { merge: true });
+          }
+        }
+        if (!input.preserveSourceDates.includes(sourceDate)) batch.delete(dayRef(db, ownerId, sourceDate));
+      }
+      await batch.commit();
+      return Response.json({ ok: true, action: input.action, movedEntries, movedDays: input.dates.length });
     }
     const entries = await dayRef(db, ownerId, input.date).collection("entries").get();
     const total = entries.docs.reduce((sum, document) => {

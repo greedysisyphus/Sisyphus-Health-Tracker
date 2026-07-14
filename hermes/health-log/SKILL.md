@@ -60,6 +60,7 @@ printf '%s' '<JSON>' | python3 scripts/health_api.py
 - `log_body`: log any provided weight, waist, body-fat percentage, sleep hours, steps, or note.
 - `get_daily_summary`: read the source-of-truth daily entries and totals.
 - `import_history`: 一次匯入舊資料。JSON 放在 `data` 內，保留所有食物名稱／份量；缺少營養標示的食物以 0 記錄並標為低信心，不能自行假造精確營養數字。
+- `shift_imported_history`: 僅限修正剛匯入的整批歷史資料日期。必須明確列出來源日期、飲水日期、身體資料日期，以及需要保留原日期的既有資料；不可用於一般日常紀錄。
 
 ## Procedure
 
