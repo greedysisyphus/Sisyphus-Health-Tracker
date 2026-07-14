@@ -33,6 +33,7 @@ const actionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("log_water"), date: z.string().date(), addMl: z.number().positive().max(10000) }),
   z.object({ action: z.literal("log_body"), date: z.string().date(), weightKg: z.number().positive().max(500).optional(), waistCm: z.number().positive().max(300).optional(), bodyFatPercent: z.number().min(0).max(100).optional(), sleepHours: z.number().min(0).max(24).optional(), steps: z.number().int().min(0).max(100000).optional(), note: z.string().max(1000).optional() }).refine(value => Object.keys(value).some(key => !["action", "date"].includes(key))),
   z.object({ action: z.literal("get_daily_summary"), date: z.string().date() }),
+  z.object({ action: z.literal("get_range_summary"), startDate: z.string().date(), endDate: z.string().date() }),
   z.object({ action: z.literal("import_history"), data: importPayload }),
   z.object({ action: z.literal("replace_history_export"), data: historyExport, preserveExistingWaterDates: z.array(z.string().date()).default([]) }),
   z.object({ action: z.literal("shift_imported_history"), dates: z.array(z.string().date()).min(1), waterDates: z.array(z.string().date()).default([]), bodyDates: z.array(z.string().date()).default([]), days: z.number().int().min(-365).max(365), preserveSourceDates: z.array(z.string().date()).default([]) }),
@@ -54,6 +55,8 @@ const emptyNutrition = { calories: 0, protein: 0, carbs: 0, fat: 0, sugar: 0, fi
 const importedNotes = (food: z.infer<typeof importedFood>) => [food.note, food.restaurant ? `餐廳：${food.restaurant}` : undefined, food.include?.length ? `包含：${food.include.join("、")}` : undefined].filter(Boolean).join("；") || undefined;
 const shiftDate = (date: string, days: number) => new Date(new Date(`${date}T12:00:00Z`).getTime() + days * 86_400_000).toISOString().slice(0, 10);
 const mealName = (meal: string) => ({ breakfast: "早餐", lunch: "午餐", dinner: "晚餐", snack: "點心", drink: "飲料", early_morning: "點心", all_day: "其他" }[meal] ?? "其他") as z.infer<typeof foodEntry>["meal"];
+const datesBetween = (startDate: string, endDate: string) => { const dates: string[] = []; for (let date = startDate; date <= endDate; date = shiftDate(date, 1)) { dates.push(date); if (dates.length > 90) throw new Error("date_range_too_large"); } return dates; };
+const totalForEntries = (entries: FirebaseFirestore.QueryDocumentSnapshot[]) => entries.reduce((sum, document) => { const data = document.data(); for (const key of ["calories", "protein", "carbs", "fat", "sugar", "fiber", "saturatedFat", "sodium"] as const) sum[key] += Number(data[key] ?? 0); return sum; }, { calories: 0, protein: 0, carbs: 0, fat: 0, sugar: 0, fiber: 0, saturatedFat: 0, sodium: 0 });
 
 export async function POST(request: Request) {
   const raw = await request.text();
@@ -240,12 +243,16 @@ export async function POST(request: Request) {
       await batch.commit();
       return Response.json({ ok: true, action: input.action, movedEntries, movedDays: input.dates.length });
     }
+    if (input.action === "get_range_summary") {
+      const dates = datesBetween(input.startDate, input.endDate);
+      const days = await Promise.all(dates.map(async date => {
+        const [entries, daily, body] = await Promise.all([dayRef(db, ownerId, date).collection("entries").get(), dayRef(db, ownerId, date).get(), db.doc(`users/${ownerId}/bodyLogs/${date}`).get()]);
+        return { date, total: totalForEntries(entries.docs), waterMl: daily.data()?.waterMl ?? 0, weightKg: body.data()?.weightKg ?? null, steps: body.data()?.steps ?? null, entries: entries.docs.map(document => document.data()) };
+      }));
+      return Response.json({ ok: true, action: input.action, startDate: input.startDate, endDate: input.endDate, days });
+    }
     const entries = await dayRef(db, ownerId, input.date).collection("entries").get();
-    const total = entries.docs.reduce((sum, document) => {
-      const data = document.data();
-      for (const key of ["calories", "protein", "carbs", "fat", "sugar", "fiber", "saturatedFat", "sodium"] as const) sum[key] += Number(data[key] ?? 0);
-      return sum;
-    }, { calories: 0, protein: 0, carbs: 0, fat: 0, sugar: 0, fiber: 0, saturatedFat: 0, sodium: 0 });
+    const total = totalForEntries(entries.docs);
     const daily = await dayRef(db, ownerId, input.date).get();
     return Response.json({ ok: true, action: input.action, date: input.date, total, waterMl: daily.data()?.waterMl ?? 0, entries: entries.docs.map(document => document.data()) });
   } catch (error) {

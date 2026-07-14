@@ -60,10 +60,15 @@ printf '%s' '<JSON>' | python3 scripts/health_api.py
 - `log_water`: add water in millilitres; never overwrite a previous amount.
 - `log_body`: log any provided weight, waist, body-fat percentage, sleep hours, steps, or note.
 - `get_daily_summary`: read the source-of-truth daily entries and totals.
+- `get_range_summary`: 讀取 1–90 天的每日總計、食物明細、飲水、體重與步數；這是進行週期／趨勢分析時的唯一資料來源。
 - `import_history`: 一次匯入舊資料。JSON 放在 `data` 內，保留所有食物名稱／份量；缺少營養標示的食物以 0 記錄並標為低信心，不能自行假造精確營養數字。
 - `shift_imported_history`: 僅限修正剛匯入的整批歷史資料日期。必須明確列出來源日期、飲水日期、身體資料日期，以及需要保留原日期的既有資料；不可用於一般日常紀錄。
 
 `amend_food` 的 `changes.nutrition` 是「這次最終吃下的整份營養值」，不必也不可再乘以 `portion`。
+
+## Analysis
+
+使用者要求「分析」、「週報」、「趨勢」或「這幾天吃得如何」時，先以 `get_range_summary` 取得指定日期（未指定則最近 7 天，最多 90 天）。只根據回傳資料分析，清楚說明缺漏紀錄或估算值會降低結論可信度；分別比較熱量、蛋白質、纖維、鈉、飲水、體重與步數，再提供 2–4 個可執行的建議。這是一般營養紀錄建議，不要做疾病診斷或替代醫療建議。
 
 ## Procedure
 

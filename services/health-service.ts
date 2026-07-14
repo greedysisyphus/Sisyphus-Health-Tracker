@@ -42,6 +42,12 @@ export async function getBodyLog(userId: string, date: string): Promise<BodyLog 
   return snapshot.exists() ? snapshot.data() as BodyLog : null;
 }
 
+export async function getUserProfile(userId: string): Promise<Record<string, unknown> | null> {
+  if (!db) return null;
+  const snapshot = await getDoc(doc(db, `users/${userId}`));
+  return snapshot.exists() ? snapshot.data() : null;
+}
+
 export async function saveBodyLog(userId: string, bodyLog: Omit<BodyLog, "createdAt" | "updatedAt">): Promise<void> {
   if (!db) throw new Error("Firebase 尚未設定");
   await setDoc(doc(db, `users/${userId}/bodyLogs/${bodyLog.date}`), { ...bodyLog, updatedAt: serverTimestamp(), createdAt: serverTimestamp() }, { merge: true });
