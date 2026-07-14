@@ -96,4 +96,6 @@
   .daily-secondary b { font-size: 11px; padding: 7px 9px; }
   .form-section { padding-top: 14px; }
   .form-section textarea { min-height: 70px; }
+  /* The compact header action rule must never shrink the Google sign-in label. */
+  .setup .primary { font-size: 14px; padding: 12px 17px; white-space: normal; }
 }
