@@ -1,7 +1,7 @@
 ---
 name: health-log
 description: 將飲食、喝水、體重、步數與睡眠安全寫入 Jovi 的健康追蹤網站；也可查詢、更正與分析既有紀錄。
-version: 1.1.0
+version: 1.2.0
 author: Jovi
 platforms: [macos]
 required_environment_variables:
@@ -47,11 +47,22 @@ printf '%s' '<JSON>' | python3 scripts/health_api.py
 3. Prefer a package nutrition label. Restaurant information is second-best. Photos and restaurant meals without a label are estimates and must set `source` to `ai_estimated` and explain assumptions in the Discord response.
 4. Before `amend_food` or `delete_food`, call `get_daily_summary`, identify the exact `entryId`, and tell the user which entry will change. Ask a follow-up question if more than one entry might match.
 5. For a portion correction, recalculate calories, protein, carbs, fat, sugar, fiber, saturatedFat, and sodium for the final consumed portion before using `amend_food`.
-6. After a successful write, call `get_daily_summary` and reply concisely in Traditional Chinese with the change and daily calories, protein, sodium, and water.
+6. After a successful write, call `get_daily_summary` once and reply concisely in Traditional Chinese with the change and daily calories, protein, sodium, and water. The only exception is the fast path below: it permits one confirmation call, but does not require it if the write response already returns the updated daily total.
 7. Never expose `HERMES_API_SECRET`, use browser automation, or send health data anywhere except `HEALTH_TRACKER_URL`.
 8. 補齊歷史營養時，先逐日呼叫 `get_daily_summary`，再以 `amend_food` 補每筆資料。包裝標示優先；無標示時可使用可信食物資料庫或合理份量估算，必須標為 `ai_estimated` 與 `low`／`medium` 信心，並在回覆中說明。
-9. 對可飲用的非酒精飲品（白水、無糖茶、咖啡、Coke Zero、牛奶、豆漿等），在 `log_food` 的同一筆 entry 填入 `hydrationMl`，把實際可飲用容量計入「水分（含飲品）」。**不可再額外呼叫 `log_water`，避免重複計算。** 未知容量時先詢問；若使用者同意估算，清楚標示估算依據（例如常見 Coke Zero 罐 330 ml）。
+9. **純白水一律使用 `log_water`**；這是最快、最直接的登記方式。其他可飲用的非酒精飲品（無糖茶、咖啡、Coke Zero、牛奶、豆漿等）則在 `log_food` 的同一筆 entry 填入 `hydrationMl`，把實際可飲用容量計入「水分（含飲品）」。同一份飲品不可同時 `log_food` 和 `log_water`，避免重複計算。未知容量時先詢問；若使用者同意估算，清楚標示估算依據（例如常見 Coke Zero 罐 330 ml）。
 10. 使用者說「常用食物」、「我的食物」或已知固定食物時，先呼叫 `find_foods` 搜尋現有資料；有精確命中時優先使用該營養資料。使用者明確要求儲存時，以 `upsert_food` 登記名稱、基準份量、營養、品牌與分類。
+
+## Fast path — 水與簡單飲品
+
+當訊息只是在登記白水、簡單飲品或清楚份量的湯品時，優先採取這個流程。這是寫入任務，不是分析任務：**不搜尋網路、不搜尋舊對話／檔案、不做自我改進、不主動分析，也不先讀取當日摘要。**
+
+1. 解析日期與容量；未指定日期時使用 Asia/Taipei 今天。
+2. 純白水：只呼叫一次 `log_water`，例如 `1500 ml` 就使用 `addMl: 1500`。
+3. 湯品：用一次 `log_food` 建立湯品食物紀錄，並以 `hydrationMl` 計入使用者明說的湯量。若沒有包裝／菜單資料，使用保守估算、`source: ai_estimated`；不要為了估營養而搜尋網路。
+4. 若一句話同時有白水與湯品，例如「喝 1500 ml 水，加一碗味噌湯約 200 ml」，只做兩次寫入：一次 `log_water` 加 1500 ml，另一次 `log_food` 加「味噌湯」且 `hydrationMl: 200`。之後最多一次 `get_daily_summary` 確認即可。
+5. 若是已知容量的零熱量飲料，建立一筆 `log_food`（0 kcal）並填寫 `hydrationMl`；未知容量時才問一次容量，不能反覆查詢或猜測。
+6. 回覆只需確認新增內容與今日水分總計。整個流程最多 **2 次寫入 + 1 次確認**，不可因為這類簡單紀錄而進行額外工具呼叫。
 
 ## Quick Reference
 
@@ -66,6 +77,8 @@ printf '%s' '<JSON>' | python3 scripts/health_api.py
 - `get_range_summary`: 讀取 1–90 天的每日總計、食物明細、飲水、體重與步數；這是進行週期／趨勢分析時的唯一資料來源。
 - `import_history`: 一次匯入舊資料。JSON 放在 `data` 內，保留所有食物名稱／份量；缺少營養標示的食物以 0 記錄並標為低信心，不能自行假造精確營養數字。
 - `shift_imported_history`: 僅限修正剛匯入的整批歷史資料日期。必須明確列出來源日期、飲水日期、身體資料日期，以及需要保留原日期的既有資料；不可用於一般日常紀錄。
+
+`log_food` 的每筆 entry 必須把營養值放在 `nutrition` 物件內；API 會將其中數值乘以 `portion` 後儲存。因此，若 `portion` 使用 200 ml，`nutrition` 必須填「每 1 ml」數值；若已算好整份營養，優先令 `portion: 1`、用 `unit`／`notes` 描述實際份量，避免被重複放大。
 
 `amend_food` 的 `changes.nutrition` 是「這次最終吃下的整份營養值」，不必也不可再乘以 `portion`。
 
