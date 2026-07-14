@@ -1,0 +1,73 @@
+/* Overrides for a comfortable phone-sized health log. */
+.mobile-topbar { display: none; }
+
+@media (max-width: 760px) {
+  .content { padding: 18px 16px 96px; }
+  .mobile-topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+  .mobile-topbar .brand { font-size: 16px; }
+  .mobile-topbar .brand i { width: 27px; height: 27px; border-radius: 9px; font-size: 20px; }
+  .content header { gap: 14px; margin-bottom: 22px; }
+  .content header > div:first-child { min-width: 0; }
+  .header-actions { justify-content: flex-end; flex-shrink: 0; }
+  .header-actions .copy-btn { display: none; }
+  .header-actions .primary { font-size: 13px; padding: 10px 12px; white-space: nowrap; }
+  .header-actions .primary:first-letter { font-size: 13px; }
+  h1 { font-size: 29px; line-height: 1.2; letter-spacing: -.8px; }
+  .muted { font-size: 13px; line-height: 1.55; }
+
+  .date-bar { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 18px; }
+  .date-bar button { padding: 10px 11px; min-height: 43px; }
+  .date-bar label { grid-column: 1 / 3; grid-row: 2; margin: 0; justify-content: space-between; border: 1px solid var(--line); border-radius: 10px; padding: 4px 8px 4px 11px; background: #fff; }
+  .date-bar input { border: 0; padding: 5px; text-align: right; min-width: 138px; }
+  .hero-card { padding: 22px 20px; }
+  .macro-row { gap: 8px; margin: 12px 0 18px; }
+  .ring-wrap { min-height: 118px; }
+  .water { min-height: 120px; }
+  .water .meter { grid-column: 1 / 3; margin: 10px 0; }
+  .water .quick-row { grid-column: 1 / 3; display: flex; margin: 0; }
+  .water .quick-row button { min-height: 34px; }
+  .quick-row { display: flex; align-items: center; margin: 0 0 20px; }
+  .weight-input { flex: 1; justify-content: space-between; }
+  .weight-input input { width: 102px; }
+
+  .section-heading { margin: 24px 0 12px; }
+  .section-heading h2 { font-size: 22px; }
+  .entry { position: relative; display: grid; grid-template-columns: 38px minmax(0, 1fr); align-items: start; gap: 10px; padding: 15px 0 54px; }
+  .entry > div:nth-child(2) { min-width: 0; }
+  .entry > div:nth-child(2) b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .entry-nutrition { position: absolute; left: 48px; bottom: 14px; margin: 0; text-align: left; }
+  .entry-nutrition span { display: block; margin-top: 2px; }
+  .entry-actions { position: absolute; right: 0; bottom: 12px; margin: 0; gap: 4px; }
+  .entry-actions button { padding: 6px 7px; min-height: 31px; }
+
+  .bottom-nav { height: 68px; padding-bottom: env(safe-area-inset-bottom); z-index: 8; box-shadow: 0 -6px 20px #26372f0d; }
+  .bottom-nav button { min-width: 57px; place-items: center; }
+  .bottom-nav b { line-height: 1; }
+  .bottom-nav button.active { font-weight: 700; }
+
+  .food-library article { padding: 14px 12px; gap: 10px; }
+  .food-library article > div:nth-child(2) { min-width: 0; flex: 1; }
+  .food-library article b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .food-library button { padding: 8px; }
+
+  .table-wrap { border: 0; border-radius: 0; overflow: visible; }
+  .table-wrap table { min-width: 0; }
+  .table-wrap thead { display: none; }
+  .table-wrap tbody { display: grid; gap: 10px; }
+  .table-wrap tr { display: grid; grid-template-columns: 1fr auto; gap: 8px; background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 13px; }
+  .table-wrap td { display: block; border: 0; padding: 0; white-space: normal; font-size: 12px; }
+  .table-wrap td:nth-child(1) { grid-column: 1 / 2; grid-row: 1; }
+  .table-wrap td:nth-child(2), .table-wrap td:nth-child(3), .table-wrap td:nth-child(4), .table-wrap td:nth-child(5), .table-wrap td:nth-child(6) { color: var(--muted); }
+  .table-wrap td:nth-child(2)::before { content: "熱量 "; }
+  .table-wrap td:nth-child(3)::before { content: "蛋白質 "; }
+  .table-wrap td:nth-child(4)::before { content: "碳水／脂肪 "; }
+  .table-wrap td:nth-child(5)::before { content: "水分 "; }
+  .table-wrap td:nth-child(6)::before { content: "體重 "; }
+  .table-wrap td:last-child { grid-column: 2; grid-row: 1; align-self: center; }
+  .table-wrap td:last-child .table-edit { padding: 7px 10px; }
+
+  .sheet-backdrop { place-items: end stretch; }
+  .sheet { max-height: 92vh; overflow: auto; padding: 14px 18px calc(22px + env(safe-area-inset-bottom)); }
+  .sheet-title h2 { font-size: 23px; }
+  .form-grid { grid-template-columns: 1fr; gap: 12px; margin: 16px 0 18px; }
+}

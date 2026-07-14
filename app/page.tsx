@@ -119,6 +119,7 @@ export default function Home() {
   return <main className="app-shell">
     <aside className="sidebar"><div className="brand"><i>n</i><span>日常營養</span></div><p className="side-date">飲食、體重與喝水，都會安全地儲存在你的帳號。</p><nav><button className={view === "daily" ? "active" : ""} onClick={() => setView("daily")}>◌　每日紀錄</button><button className={view === "overview" ? "active" : ""} onClick={() => setView("overview")}>▦　每日總覽</button><button className={view === "trends" ? "active" : ""} onClick={() => setView("trends")}>〽　趨勢</button><button className={view === "foods" ? "active" : ""} onClick={() => setView("foods")}>□　我的食物</button></nav><div className="profile"><div>{(user.displayName ?? user.email ?? "你").slice(0, 1)}</div><span>{user.displayName ?? "我的帳號"}<small>{user.email}</small></span><button className="text-button" onClick={() => void signOut(auth!)}>登出</button></div></aside>
     <section className="content">
+      <div className="mobile-topbar"><div className="brand"><i>n</i><span>日常營養</span></div><button className="text-button" onClick={() => void signOut(auth!)}>登出</button></div>
       {view === "daily" && <div className="date-bar"><button onClick={() => setDate(formatLocalDate(new Date(new Date(`${date}T12:00:00`).getTime() - 86400000)))}><b>‹ 前一天</b></button><label>指定日期<input type="date" value={date} onChange={event => setDate(event.target.value)} /></label><button onClick={() => setDate(formatLocalDate(new Date(new Date(`${date}T12:00:00`).getTime() + 86400000)))}><b>後一天 ›</b></button></div>}
       {view === "daily" ? <>
       <header><div><p className="eyebrow">DAILY LOG</p><h1>{date === formatLocalDate(new Date()) ? "今天，好好吃飯。" : `${dateLabel(date)}的飲食紀錄`}</h1><p className="muted">新增、修改和 Hermes 寫入的資料都會立即同步。</p></div><div className="header-actions"><button className="copy-btn" onClick={() => setExporting(true)}>匯出資料</button><button className="primary" onClick={() => setEditor(null)}>＋ 新增紀錄</button></div></header>
@@ -133,6 +134,7 @@ export default function Home() {
     {editor !== undefined && <Editor initial={editor} close={() => setEditor(undefined)} save={saveFoodEntry} />}
     {foodEditor !== undefined && <FoodEditor initial={foodEditor} close={() => setFoodEditor(undefined)} save={saveCommonFood} />}
     {exporting && <ExportSheet close={() => setExporting(false)} exportRecords={exportRecords} />}
+    <nav className="bottom-nav" aria-label="主要功能"><button className={view === "daily" ? "active" : ""} onClick={() => setView("daily")}><b>◌</b><span>每日</span></button><button className={view === "overview" ? "active" : ""} onClick={() => setView("overview")}><b>▦</b><span>總覽</span></button><button className={view === "trends" ? "active" : ""} onClick={() => setView("trends")}><b>〽</b><span>趨勢</span></button><button className={view === "foods" ? "active" : ""} onClick={() => setView("foods")}><b>□</b><span>食物</span></button></nav>
   </main>;
 }
 
