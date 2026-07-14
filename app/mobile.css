@@ -1,5 +1,10 @@
 /* Overrides for a comfortable phone-sized health log. */
 .mobile-topbar { display: none; }
+.nav-icon { width: 18px; height: 18px; vertical-align: -4px; margin-right: 9px; }
+.bottom-nav .nav-icon { width: 20px; height: 20px; margin: 0; vertical-align: 0; }
+.analysis-choices { display: grid; gap: 10px; margin: 18px 0; }
+.export-divider { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; margin: 22px 0 0; }
+.export-divider::before, .export-divider::after { content: ""; height: 1px; background: var(--line); flex: 1; }
 
 @media (max-width: 760px) {
   .content { padding: 18px 16px 96px; }
@@ -43,6 +48,7 @@
   .bottom-nav { height: 68px; padding-bottom: env(safe-area-inset-bottom); z-index: 8; box-shadow: 0 -6px 20px #26372f0d; }
   .bottom-nav button { min-width: 57px; place-items: center; }
   .bottom-nav b { line-height: 1; }
+  .bottom-nav .nav-icon { display: block; }
   .bottom-nav button.active { font-weight: 700; }
 
   .food-library article { padding: 14px 12px; gap: 10px; }
