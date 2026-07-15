@@ -25,6 +25,8 @@
 .entry-actions button { border: 1px solid var(--line); background: #fff; border-radius: 8px; color: var(--sage-dark); cursor: pointer; font-size: 12px; padding: 7px 8px; }
 .entry-actions button:last-child { color: #a65544; }
 .food-mark { display: block; width: 20px; height: 20px; }
+.nav-mark { display: block; width: 20px; height: 20px; }
+.side-nav .nav-mark { width: 19px; height: 19px; }
 .water .water-breakdown { margin: 0 0 6px; color: var(--muted); font-size: 11px; }
 .drink-shortcuts { width: 100%; margin-top: 13px; padding-top: 12px; border-top: 1px solid var(--line); }
 .drink-shortcuts > span { display: block; margin-bottom: 7px; color: var(--muted); font-size: 11px; }
@@ -104,9 +106,10 @@
   .entry-actions button { padding: 6px 7px; min-height: 31px; }
 
   .bottom-nav { height: 68px; padding-bottom: env(safe-area-inset-bottom); z-index: 8; box-shadow: 0 -6px 20px #26372f0d; }
-  .bottom-nav button { min-width: 57px; place-items: center; }
+  .bottom-nav button { min-width: 0; flex: 1; place-items: center; }
   .bottom-nav b { line-height: 1; }
   .bottom-nav .nav-icon { display: block; }
+  .bottom-nav .nav-mark { margin: 0 auto; }
   .bottom-nav button.active { font-weight: 700; }
 
   .food-library article { padding: 14px 12px; gap: 10px; }
