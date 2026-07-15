@@ -23,6 +23,7 @@ export type HealthEventFoodInput = {
   meal: "早餐" | "午餐" | "晚餐" | "點心" | "飲料" | "宵夜" | "其他";
   nutrition: NutritionInput;
   servings?: number;
+  consumedPercent?: number;
   servingWeightG?: number | null;
   hydrationMl?: number;
   time?: string;
@@ -38,6 +39,7 @@ type CanonicalEntry = {
   category: string | null;
   mealType: HealthEventFoodInput["meal"];
   servings: number;
+  consumedPercent: number;
   servingWeightG: number | null;
   caloriesKcal: number;
   proteinG: number;
@@ -133,7 +135,7 @@ export function resolveIdempotency(
 }
 
 const amendAllowlist = {
-  standard: new Set(["nutrition", "servings", "servingWeightG", "source", "confidence", "notes", "hydrationMl"]),
+  standard: new Set(["nutrition", "servings", "consumedPercent", "servingWeightG", "source", "confidence", "notes", "hydrationMl"]),
   history_backfill: new Set(["nutrition", "source", "confidence", "notes"]),
 };
 
@@ -152,7 +154,7 @@ const safeNumber = (value: unknown): number =>
 export function totalForEntryData(entries: Array<Record<string, unknown>>): NutritionTotal {
   return entries.reduce<NutritionTotal>((total, entry) => {
     const canonical = entry.caloriesKcal !== undefined;
-    const servings = canonical ? safeNumber(entry.servings || 1) : 1;
+    const servings = canonical ? safeNumber(entry.servings || 1) * Math.min(100, safeNumber(entry.consumedPercent ?? 100)) / 100 : 1;
     const add = (canonicalKey: string, legacyKey: string) =>
       safeNumber(canonical ? entry[canonicalKey] : entry[legacyKey]) * servings;
     total.caloriesKcal += add("caloriesKcal", "calories");
@@ -180,6 +182,7 @@ export function canonicalizeFoodEntry(item: HealthEventFoodInput, id: string): C
     category: item.category ?? null,
     mealType: item.meal,
     servings: item.servings ?? 1,
+    consumedPercent: item.consumedPercent ?? 100,
     servingWeightG: item.servingWeightG ?? null,
     caloriesKcal: nutrition.calories,
     proteinG: nutrition.protein,

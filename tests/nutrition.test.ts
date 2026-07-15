@@ -16,4 +16,8 @@ describe("nutrition utilities", () => {
     const drink = normalizeFoodRecord({ id: "drink", name: "Coke Zero", hydrationMl: 330 });
     expect(calculateHydrationSummary([drink], 900)).toEqual({ totalWaterMl: 900, beverageWaterMl: 330, plainWaterMl: 570 });
   });
+  it("scales nutrition by the consumed percentage", () => {
+    const entry = normalizeFoodRecord({ id: "meal", name: "餐盒", servings: 1, consumedPercent: 50, caloriesKcal: 600, proteinG: 40 });
+    expect(calculateDailyNutrition([entry])).toMatchObject({ caloriesKcal: 300, proteinG: 20 });
+  });
 });

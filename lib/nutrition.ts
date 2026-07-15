@@ -23,6 +23,7 @@ export type FoodEntry = Nutrition & {
   category: string | null;
   mealType: MealType;
   servings: number;
+  consumedPercent: number;
   servingWeightG: number | null;
   hydrationMl: number;
   time: string;
@@ -65,6 +66,7 @@ export function normalizeFoodRecord(raw: Record<string, unknown>, id?: string): 
     mealType: (raw.mealType && meals.includes(raw.mealType as MealType) ? raw.mealType : mealType) as MealType,
     // Legacy entries store their final consumed values. Treat them as one serving.
     servings: isCanonical ? Math.max(numberOr(raw.servings, 1), 0.1) : 1,
+    consumedPercent: Math.min(100, Math.max(0, numberOr(raw.consumedPercent, 100))),
     servingWeightG: nullableNumber(raw.servingWeightG) ?? (!isCanonical && oldUnit === "g" ? oldPortion : null),
     caloriesKcal: numberOr(raw.caloriesKcal ?? raw.calories),
     proteinG: numberOr(raw.proteinG ?? raw.protein),
@@ -88,7 +90,7 @@ export function normalizeFoodRecord(raw: Record<string, unknown>, id?: string): 
 }
 
 export const totalForEntry = (entry: FoodEntry): Nutrition => {
-  const servings = Math.max(numberOr(entry.servings, 1), 0);
+  const servings = Math.max(numberOr(entry.servings, 1), 0) * Math.min(100, Math.max(0, numberOr(entry.consumedPercent, 100))) / 100;
   const value = (nutrition: number | null) => nutrition === null ? 0 : numberOr(nutrition) * servings;
   return { caloriesKcal: value(entry.caloriesKcal), proteinG: value(entry.proteinG), carbsG: value(entry.carbsG), fatG: value(entry.fatG), fiberG: value(entry.fiberG), sugarG: value(entry.sugarG), saturatedFatG: value(entry.saturatedFatG), transFatG: value(entry.transFatG), sodiumMg: value(entry.sodiumMg), potassiumMg: value(entry.potassiumMg), cholesterolMg: value(entry.cholesterolMg), caffeineMg: value(entry.caffeineMg) };
 };
@@ -113,7 +115,7 @@ export const calculateHydrationSummary = (entries: FoodEntry[], waterMl: number)
 };
 
 export const calculateDailyTotals = calculateDailyNutrition;
-export const calculateNutritionByPortion = (nutrition: Nutrition, servings: number): Nutrition => totalForEntry({ id: "calculation", name: "calculation", brand: null, category: null, mealType: "其他", servings, servingWeightG: null, hydrationMl: 0, time: "", notes: null, ...nutrition });
+export const calculateNutritionByPortion = (nutrition: Nutrition, servings: number): Nutrition => totalForEntry({ id: "calculation", name: "calculation", brand: null, category: null, mealType: "其他", servings, consumedPercent: 100, servingWeightG: null, hydrationMl: 0, time: "", notes: null, ...nutrition });
 export const formatNutrition = (value: number | null | undefined, unit: "g" | "mg" | "kcal") => `${unit === "g" ? Math.round((value ?? 0) * 10) / 10 : Math.round(value ?? 0)} ${unit}`;
 export const parseNonNegativeNumber = (value: string): number | null => { if (value.trim() === "") return null; const parsed = Number(value); return Number.isFinite(parsed) && parsed >= 0 ? parsed : null; };
 export const calculateRemainingCalories = (goal: number, consumed: number) => goal - consumed;
