@@ -1,4 +1,55 @@
 /* Overrides for a comfortable phone-sized health log. */
+:root { --ink: #25332e; --muted: #77817c; --paper: #f8f7f2; --line: #e6e8e0; --sage: #88a99e; --sage-dark: #315f55; --sage-pale: #e7efea; --ring-track: #edf0e9; }
+body { background: var(--paper); }
+.sidebar { background: #fbfcf9; border-right-color: #e5e9e3; box-shadow: 12px 0 32px #22362c08; }
+.brand i { border-radius: 50%; box-shadow: 0 5px 13px #315f5530; }
+.side-date { line-height: 1.9; }
+.sidebar nav { gap: 8px; }
+.sidebar nav button { border-radius: 14px; padding: 13px 12px; transition: background-color 160ms ease, color 160ms ease; }
+.sidebar nav button.active { box-shadow: inset 0 0 0 1px #dce8e0; }
+.content { max-width: 1220px; }
+header { margin-bottom: 28px; }
+h1 { letter-spacing: -1.7px; line-height: 1.12; }
+.muted { line-height: 1.65; }
+.eyebrow { color: #59776d; }
+.primary, .save-btn { border-radius: 999px; box-shadow: 0 7px 15px #315f5524; transition: transform 140ms ease, box-shadow 140ms ease; }
+.primary:active, .save-btn:active { box-shadow: none; transform: translateY(1px); }
+.copy-btn, .quick-row button { border-radius: 999px; }
+.date-bar button, .date-bar label { border-radius: 12px; }
+.hero-card { background: linear-gradient(135deg, #315f55 0%, #547d70 100%); border-radius: 28px; box-shadow: 0 18px 34px #315f551d; min-height: 200px; padding: 34px 38px; }
+.hero-card .calorie strong { font-family: Georgia, "Noto Serif TC", serif; font-size: 52px; letter-spacing: -2px; }
+.hero-card .meter { background: #ffffff2b; height: 8px; }
+.hero-card .meter i { background: #d6e4ba; }
+.weight { border-left-color: #ffffff36; }
+.macro-row { gap: 13px; }
+.ring-wrap, .water { border: 0; box-shadow: 0 7px 20px #25362e0a; }
+.ring-wrap { border-radius: 20px; }
+.ring-hole { background: #fff; }
+.water { border-radius: 20px; }
+.daily-secondary b { background: #f0f5f1; border: 0; color: #587268; }
+.daily-guidance { background: #eef5ef; border: 0; border-radius: 16px; box-shadow: none; }
+.daily-guidance summary { color: #45665b; }
+.weight-input { background: #fff; border-radius: 14px; box-shadow: 0 5px 16px #25362e08; padding: 11px 13px; }
+.weight-input input { border: 0; border-bottom: 1px solid var(--line); border-radius: 0; }
+.section-heading { margin-top: 35px; }
+.section-heading h2 { font-size: 25px; letter-spacing: -.7px; }
+.entry-list { border: 0; }
+.meal-group { background: #fff; border: 1px solid #eceee8; border-radius: 18px; box-shadow: 0 6px 18px #25362e08; margin-bottom: 13px; overflow: hidden; }
+.meal-group-heading { align-items: center; background: #fbfcf9; border-bottom: 1px solid #edf0ea; color: #567267; display: flex; justify-content: space-between; padding: 11px 15px; }
+.meal-group-heading span { font-size: 12px; font-weight: 700; letter-spacing: .7px; }
+.meal-group-heading small { color: var(--muted); font-size: 11px; }
+.entry { border-bottom-color: #edf0ea; padding: 15px; }
+.entry:last-child { border-bottom: 0; }
+.food-icon { background: #f3f1e8; border-radius: 50%; color: #9a7640; }
+.entry-actions button { border-color: #e8ece6; border-radius: 999px; }
+.entry-actions button:last-child { background: #fff8f5; border-color: #f2e5df; }
+.trend-card, .weekly-goals, .weekly-trends, .targets-card, .food-library { border-color: #e7eae4; box-shadow: 0 7px 20px #25362e08; }
+.trend-card, .weekly-goals, .weekly-trends, .targets-card { border-radius: 22px; }
+.food-library { border-radius: 20px; overflow: hidden; }
+.food-library article { padding: 18px; }
+.weekly-goals, .weekly-trends { background: #fff; }
+.trend-sparkline { background: #fcfdfb; }
+.bottom-nav { background: #fcfdfb; box-shadow: 0 -7px 22px #25362e0c; }
 .mobile-topbar { display: none; }
 .nav-icon { width: 18px; height: 18px; vertical-align: -4px; margin-right: 9px; }
 .bottom-nav .nav-icon { width: 20px; height: 20px; margin: 0; vertical-align: 0; }
@@ -170,6 +221,17 @@
   .daily-secondary b { font-size: 11px; padding: 7px 9px; }
   .form-section { padding-top: 14px; }
   .form-section textarea { min-height: 70px; }
+  .content { background: var(--paper); }
+  .hero-card { border-radius: 24px; box-shadow: 0 13px 28px #315f551c; }
+  .hero-card .calorie strong { font-size: 45px; }
+  .section-heading { margin-top: 31px; }
+  .section-heading h2 { font-size: 24px; }
+  .meal-group { border-radius: 17px; margin-bottom: 11px; }
+  .meal-group-heading { padding: 10px 14px; }
+  .entry { padding: 15px 14px 54px; }
+  .entry-actions { right: 14px; }
+  .entry-nutrition { left: 62px; }
+  .bottom-nav { background: #fcfdfb; box-shadow: 0 -7px 22px #25362e0c; }
   /* The compact header action rule must never shrink the Google sign-in label. */
   .setup .primary { font-size: 14px; padding: 12px 17px; white-space: normal; }
 }
