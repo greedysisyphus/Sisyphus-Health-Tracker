@@ -1,7 +1,7 @@
 ---
 name: health-log
-description: 將飲食、喝水、體重、步數與睡眠安全寫入 Jovi 的健康追蹤網站；也可查詢、更正與分析既有紀錄。
-version: 1.4.0
+description: 將飲食、飲水、體重、睡眠與步數安全寫入 Jovi 的健康追蹤網站；支援 Discord 冪等、防重複、照片餐點、修正與趨勢分析。
+version: 2.0.0
 author: Jovi
 platforms: [macos]
 required_environment_variables:
@@ -19,119 +19,92 @@ metadata:
     requires_toolsets: [terminal]
 ---
 
-# Health Log Skill
+# Health Log
 
-將飲食、喝水、體重、睡眠與步數寫入 Jovi 的健康追蹤網站。每次使用都必須透過 `terminal` 執行此 skill 內的 API 腳本；只用文字回覆不算完成紀錄。
+所有健康紀錄都必須透過本 skill 的腳本寫入網站。文字回覆不代表完成；只有 API 回傳 `ok: true` 才能說已記錄。
 
-## When to Use
+## Intent router
 
-使用者回報、修正、查詢或要求分析健康資料時使用，包括食物、營養、喝水、體重、睡眠與步數。
+| 使用者需求 | 執行方式 |
+|---|---|
+| 新增食物、飲品、白水或身體資料 | 一次 `log_health_event`，使用 `scripts/health_log.py` |
+| 查詢某日 | `get_daily_summary` |
+| 週期／趨勢分析 | `get_range_summary` |
+| 更正既有食物 | 先查摘要定位 `entryId`，再 `amend_food` |
+| 刪除食物 | 先查摘要、向使用者確認 exact entry，再 `delete_food` |
+| 常用食物 | 先 `find_foods`，明確要求儲存才 `upsert_food` |
+| 歷史營養補齊 | 載入 `references/history-nutrition-backfill.md` |
+| 照片餐點 | 載入 `references/photo-meal-workflow.md` |
 
-## Prerequisites
+讀取與修正可將原始 `action` JSON 傳給 `health_log.py`；腳本會轉交 `health_api.py`。
 
-- `HEALTH_TRACKER_URL` 與 `HERMES_API_SECRET` 必須位於 `~/.hermes/.env`。
-- 透過 `terminal` 執行 `scripts/health_api.py`，不要改用瀏覽器自動化。
+## Safe write path
 
-## How to Run
-
-從 health-log skill 目錄執行下列模式；先完成 API 寫入，再以成功回應為準回覆使用者：
-
-```bash
-printf '%s' '<JSON>' | python3 scripts/health_api.py
-```
-
-## Rules
-
-1. **所有紀錄或修正都必須用 `terminal` 執行 `scripts/health_api.py`。沒有成功的 API JSON 回應時，不可以說「已記錄」。**
-2. Use `Asia/Taipei` for dates. If the user does not specify a date, use today.
-3. Prefer a package nutrition label. Restaurant information is second-best. Photos and restaurant meals without a label are estimates and must set `source` to `ai_estimated` and explain assumptions in the Discord response.
-4. Before `amend_food` or `delete_food`, call `get_daily_summary`, identify the exact `entryId`, and tell the user which entry will change. Ask a follow-up question if more than one entry might match.
-5. For a serving correction, use `servings` only. Nutrition values are always **per serving**; never multiply them yourself before calling the API.
-6. After a successful write, call `get_daily_summary` once and reply concisely in Traditional Chinese with the change and daily calories, protein, sodium, and water. The only exception is the fast path below: it permits one confirmation call, but does not require it if the write response already returns the updated daily total.
-7. Never expose `HERMES_API_SECRET`, use browser automation, or send health data anywhere except `HEALTH_TRACKER_URL`.
-8. 補齊歷史營養時，先逐日呼叫 `get_daily_summary`，再以 `amend_food` 補每筆資料。包裝標示優先；無標示時可使用可信食物資料庫或合理份量估算，必須標為 `ai_estimated` 與 `low`／`medium` 信心，並在回覆中說明。
-9. **純白水一律使用 `log_water`**；這是最快、最直接的登記方式。其他可飲用的非酒精飲品（無糖茶、咖啡、Coke Zero、牛奶、豆漿等）則在 `log_food` 的同一筆 entry 填入 `hydrationMl`，把實際可飲用容量計入「水分（含飲品）」。同一份飲品不可同時 `log_food` 和 `log_water`，避免重複計算。未知容量時先詢問；若使用者同意估算，清楚標示估算依據（例如常見 Coke Zero 罐 330 ml）。
-10. 使用者說「常用食物」、「我的食物」或已知固定食物時，先呼叫 `find_foods` 搜尋現有資料；有精確命中時優先使用該營養資料。使用者明確要求儲存時，以 `upsert_food` 登記名稱、基準份量、營養、品牌與分類。
-
-## Photo meal workflow — 多張餐點照片
-
-當使用者在同一則 Discord 訊息附上 1–10 張圖片，並說明「請分析／記錄」、「早餐／午餐／晚餐」或明確表示要登記時，將所有附圖視為**同一餐的資料組**。不要逐張各自當成一餐，也不要把同一食物的餐點照與營養標示重複登記。
-
-1. 先檢視該則訊息的所有圖片一次，辨識每張照片的角色：完整餐點、包裝正面、營養標示、剩餘食物／實際食用份量。每張圖最多使用一次 `vision_analyze`；不可反覆辨識同一張圖。
-2. 優先使用清楚可讀的包裝營養標示；依使用者實際吃下的比例換算。這類 entry 設為 `source: nutrition_label`、`confidence: high`。
-3. 沒有標示的餐點，依照片可見內容與合理份量估算熱量、蛋白質、碳水、脂肪與鈉；entry 設為 `source: ai_estimated`、`confidence: medium` 或 `low`，並在 `notes` 說明估算依據。不可把估算寫成精確值。
-4. **嚴禁使用 `web_search`、瀏覽器、自動搜尋店家菜單、舊對話或檔案。** 照片和訊息已足夠時直接估算；不夠時先問**一個最必要的問題**。若使用者已說「全部吃完」或照片顯示明確包裝份量，毋須再問。
-5. 將整餐的所有食物整理為同一次 `log_food` 的 `entries` 陣列，一次寫入；最多再呼叫一次 `get_daily_summary` 確認。不可對每一張圖片各做一次 API 寫入，也不可在寫入前反覆讀取摘要。
-6. 回覆必須列出辨識到的食物、每項是「標示值」或「照片估算」、以及當日總計。照片估算要用「約」並提醒可能有誤差。
-7. 如果使用者只傳照片、沒有說要分析或記錄，先問「要我分析並記錄這餐嗎？」；不要自行寫入。
-8. 照片餐點的整體上限是：每張圖一次視覺辨識 + 一次 `log_food` + 一次確認。超出此上限時停止並直接回覆目前可得的估算或提出一個問題，不可繼續工具迴圈。
-
-## Fast path — 水與簡單飲品
-
-當訊息只是在登記白水、簡單飲品或清楚份量的湯品時，優先採取這個流程。這是寫入任務，不是分析任務：**不搜尋網路、不搜尋舊對話／檔案、不做自我改進、不主動分析，也不先讀取當日摘要。**
-
-1. 解析日期與容量；未指定日期時使用 Asia/Taipei 今天。
-2. 純白水：只呼叫一次 `log_water`，例如 `1500 ml` 就使用 `addMl: 1500`。
-3. 湯品：用一次 `log_food` 建立湯品食物紀錄，並以 `hydrationMl` 計入使用者明說的湯量。若沒有包裝／菜單資料，使用保守估算、`source: ai_estimated`；不要為了估營養而搜尋網路。
-4. 若一句話同時有白水與湯品，例如「喝 1500 ml 水，加一碗味噌湯約 200 ml」，只做兩次寫入：一次 `log_water` 加 1500 ml，另一次 `log_food` 加「味噌湯」且 `hydrationMl: 200`。之後最多一次 `get_daily_summary` 確認即可。
-5. 若是已知容量的零熱量飲料，建立一筆 `log_food`（0 kcal）並填寫 `hydrationMl`；未知容量時才問一次容量，不能反覆查詢或猜測。
-6. 回覆只需確認新增內容與今日水分總計。整個流程最多 **2 次寫入 + 1 次確認**，不可因為這類簡單紀錄而進行額外工具呼叫。
-
-## Quick Reference
-
-- `log_food`: add one or more meal entries.
-- `amend_food`: change a known `entryId`.
-- `delete_food`: delete a known `entryId` after confirmation.
-- `upsert_food`: save a frequently used food to the personal food library.
-- `find_foods`: 搜尋個人常用食物資料庫。
-- `log_water`: add water in millilitres; never overwrite a previous amount.
-- `log_body`: log any provided weight, waist, body-fat percentage, sleep hours, steps, or note.
-- `get_daily_summary`: read the source-of-truth daily entries and totals.
-- `get_range_summary`: 讀取 1–90 天的每日總計、食物明細、飲水、體重與步數；這是進行週期／趨勢分析時的唯一資料來源。
-- `import_history`: 一次匯入舊資料。JSON 放在 `data` 內，保留所有食物名稱／份量；缺少營養標示的食物以 0 記錄並標為低信心，不能自行假造精確營養數字。
-- `shift_imported_history`: 僅限修正剛匯入的整批歷史資料日期。必須明確列出來源日期、飲水日期、身體資料日期，以及需要保留原日期的既有資料；不可用於一般日常紀錄。
-
-`log_food` 的每筆 entry 必須把營養值放在 `nutrition` 物件內，且全部都是**每份**的數字。使用 `servings` 表示實際吃了幾份；網站與 API 會在每日總計時統一乘上份數。不要傳舊的 `portion` 或 `unit`。
-
-每筆 food entry 請盡量提供：`brand`（未知為 `null`）、`category`（未知為 `null`）、`servings`（預設 1）、`servingWeightG`（未知為 `null`）、`notes`（未知為 `null`）。`meal` 僅可為：早餐、午餐、晚餐、點心、飲料、宵夜、其他。
-
-`nutrition` 完整欄位為：`calories`、`protein`、`carbs`、`fat`、`fiber`、`sugar`、`saturatedFat`、`sodium`、`caffeine`（以上未知時填 0）；`transFat`、`potassium`、`cholesterol`（未知時填 `null`）。單位分別是 kcal、g、g、g、g、g、g、mg、mg、g、mg、mg。不要使用空字串或省略必填的主要營養欄位。
-
-`amend_food` 的 `changes.nutrition` 也是每份營養；若只改份數，只傳 `servings` 即可。修改時不會改到同名的常用食物。
-
-`hydrationMl` 是該筆飲品對每日總水分的貢獻；更正或刪除飲品時，API 會自動同步調整總水分。
-
-## Analysis
-
-使用者要求「分析」、「週報」、「趨勢」或「這幾天吃得如何」時，先以 `get_range_summary` 取得指定日期（未指定則最近 7 天，最多 90 天）。只根據回傳資料分析，清楚說明缺漏紀錄或估算值會降低結論可信度；分別比較熱量、蛋白質、纖維、鈉、飲水、體重與步數，再提供 2–4 個可執行的建議。這是一般營養紀錄建議，不要做疾病診斷或替代醫療建議。
-
-## Procedure
-
-1. 從使用者訊息判讀動作與日期；未指定日期時用 Asia/Taipei 的今天。
-2. 以 `terminal` 執行 API 腳本，將正確 JSON 傳入。
-3. 寫入成功後呼叫 `get_daily_summary` 確認當日總計。
-4. 用繁體中文簡短回覆實際寫入結果；若 API 失敗，清楚說明失敗原因，不要假裝已完成。
-
-## Examples
+Discord 新增紀錄時，把 triggering message ID 當作 `eventId`，並將同一則訊息中的食物、飲品、白水與身體資料組成一個事件：
 
 ```bash
-printf '%s' '{"action":"log_water","date":"2026-07-14","addMl":500}' | python3 scripts/health_api.py
+python3 scripts/health_log.py <<'EOF'
+{
+  "intent": "log_health_event",
+  "date": "today",
+  "eventId": "DISCORD_MESSAGE_ID",
+  "entries": [],
+  "plainWaterMl": 500
+}
+EOF
 ```
 
-```bash
-printf '%s' '{"action":"log_body","date":"2026-07-14","weightKg":74.2,"steps":6693}' | python3 scripts/health_api.py
-```
+API 會以 `source + eventId + operationKey` 防重複，並以 transaction 一次寫入整個事件。相同內容重送時回傳 `replayed: true`；同一 key 但內容不同時回傳 `idempotency_conflict`，此時不可改 key 來繞過保護，應改用明確的更正流程。
 
-```bash
-python3 scripts/health_api.py --file /absolute/path/to/health-history.json
-```
+成功回應已包含伺服器端 `dailySummary`。直接用它回覆，不要自行重算，也不必再呼叫 `get_daily_summary`。
 
-`health-history.json` 的最外層必須是：
+## Non-negotiable rules
 
-```json
-{ "action": "import_history", "data": { "records": [] } }
-```
+1. 未指定日期時使用 Asia/Taipei 今天；不得猜 UTC 日期。
+2. 純白水放在事件的 `plainWaterMl`。其他非酒精飲品建立 food entry 並填 `hydrationMl`；同一飲品不可再加到 `plainWaterMl`。
+3. 營養全部是**每份**數字，以 `servings` 表示吃了幾份。包裝標示一份但只吃一半時保留標示值並用 `servings: 0.5`。
+4. 優先序：包裝標示 > 餐廳官方 > 個人常用食物 > 合理 AI 估算。無標示估算必須用 `ai_estimated` 與 `medium`／`low`，並在 `notes` 和回覆說明假設。
+5. 不可暴露 `HERMES_API_SECRET`、使用瀏覽器寫入，或把健康資料送往 `HEALTH_TRACKER_URL` 以外。
+6. API 失敗、回傳非 `ok: true` 或 `idempotency_conflict` 時，清楚報錯，不能假裝完成。
 
-## Verification
+## Food entry contract
 
-成功的 API 回應會是 JSON，包含 `ok: true`。若回應錯誤，先處理錯誤再回覆使用者。
+完整 schema 見 `references/api-schema.md`。每筆至少提供：
+
+- `name`, `meal`, `servings`, `nutrition`
+- `brand`, `category`, `servingWeightG`, `notes`；未知填 `null`
+- `hydrationMl`；非飲品通常為 0
+- `source`, `confidence`
+
+`meal` 僅可為：早餐、午餐、晚餐、點心、飲料、宵夜、其他。
+
+## Corrections and invariants
+
+`amend_food` 前必須：
+
+1. 呼叫 `get_daily_summary`。
+2. 以日期與 exact `entryId` 定位；同名而無法確認時先問使用者。
+3. 告知使用者將修改哪一筆。
+4. 只傳需要修改的欄位。
+
+一般更正只允許：`nutrition`, `servings`, `servingWeightG`, `source`, `confidence`, `notes`, `hydrationMl`。名稱、日期、meal、time 與 entry ID 不可透過 amend 修改。歷史補營養使用 `mode: history_backfill`，只允許 `nutrition`, `source`, `confidence`, `notes`。
+
+## Response
+
+繁體中文簡短回覆：
+
+- 實際新增／修改內容
+- 標示值或 AI 估算及必要假設
+- `dailySummary` 的熱量、蛋白質、鈉、水分
+- 必要時補充咖啡因或安全提醒
+
+伺服器已回傳的數字是唯一來源，不要在回覆時重新計算。
+
+## Verification checklist
+
+- [ ] API 回傳 `ok: true`
+- [ ] 新增紀錄帶 Discord `eventId`
+- [ ] 食物與白水同訊息時使用單一複合事件
+- [ ] 飲品 hydration 沒有與 plain water 重複
+- [ ] 回覆使用 API `dailySummary`
+- [ ] 估算值標示 source、confidence 與 assumptions

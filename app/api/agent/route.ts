@@ -1,12 +1,22 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { z } from "zod";
+import {
+  assertAllowedAmendChanges,
+  buildHealthEventPlan,
+  canonicalPayloadHash,
+  idempotencyDocumentId,
+  nextWaterMl,
+  resolveIdempotency,
+  totalForEntryData,
+} from "../../../lib/agent-health";
 import { getAdminDb } from "../../../lib/firebase-admin";
 
 export const runtime = "nodejs";
 
 const nutrition = z.object({ calories: z.number().min(0), protein: z.number().min(0), carbs: z.number().min(0), fat: z.number().min(0), sugar: z.number().min(0).default(0), fiber: z.number().min(0).default(0), saturatedFat: z.number().min(0).default(0), transFat: z.number().min(0).nullable().optional().default(null), sodium: z.number().min(0).default(0), potassium: z.number().min(0).nullable().optional().default(null), cholesterol: z.number().min(0).nullable().optional().default(null), caffeine: z.number().min(0).default(0) });
-const foodEntry = z.object({ id: z.string().min(1).optional(), name: z.string().min(1), brand: z.string().max(200).nullable().optional(), category: z.string().max(100).nullable().optional(), meal: z.enum(["早餐", "午餐", "晚餐", "點心", "飲料", "宵夜", "其他"]), nutrition, servings: z.number().positive().optional(), servingWeightG: z.number().min(0).nullable().optional(), portion: z.number().positive().optional(), unit: z.string().min(1).optional(), hydrationMl: z.number().min(0).max(10000).default(0), time: z.string().default("現在"), source: z.enum(["nutrition_label", "restaurant_official", "ingredient_calculation", "database", "ai_estimated", "manual_estimated"]).default("ai_estimated"), confidence: z.enum(["high", "medium", "low"]).default("medium"), notes: z.string().max(1000).nullable().optional() });
+const foodEntry = z.object({ id: z.string().min(1).optional(), name: z.string().min(1).max(200), brand: z.string().max(200).nullable().optional(), category: z.string().max(100).nullable().optional(), meal: z.enum(["早餐", "午餐", "晚餐", "點心", "飲料", "宵夜", "其他"]), nutrition, servings: z.number().positive().optional(), servingWeightG: z.number().min(0).nullable().optional(), portion: z.number().positive().optional(), unit: z.string().min(1).max(50).optional(), hydrationMl: z.number().min(0).max(10000).default(0), time: z.string().max(100).default("現在"), source: z.enum(["nutrition_label", "restaurant_official", "ingredient_calculation", "database", "ai_estimated", "manual_estimated"]).default("ai_estimated"), confidence: z.enum(["high", "medium", "low"]).default("medium"), notes: z.string().max(1000).nullable().optional() });
+const healthEventFoodEntry = foodEntry.omit({ id: true }).strict();
 const importedFood = z.object({
   name: z.string().min(1), quantity: z.union([z.number(), z.string()]).optional(), volume_ml: z.number().positive().optional(), calories: z.number().min(0).optional(), estimated_calories: z.number().min(0).optional(), protein_g: z.number().min(0).optional(), carbs_g: z.number().min(0).optional(), fat_g: z.number().min(0).optional(), fiber_g: z.number().min(0).optional(), sugar_g: z.number().min(0).optional(), saturated_fat_g: z.number().min(0).optional(), trans_fat_g: z.number().min(0).nullable().optional(), sodium_mg: z.number().min(0).optional(), potassium_mg: z.number().min(0).nullable().optional(), cholesterol_mg: z.number().min(0).nullable().optional(), caffeine_mg: z.number().min(0).optional(), brand: z.string().max(200).nullable().optional(), category: z.string().max(100).nullable().optional(), serving_weight_g: z.number().min(0).nullable().optional(), note: z.string().max(1000).optional(), restaurant: z.string().max(200).optional(), include: z.array(z.string().max(200)).optional(),
 }).passthrough();
@@ -25,9 +35,39 @@ const historyExport = z.object({
   targets: z.record(z.string(), z.unknown()).optional(),
   daily_records: z.array(z.object({ date: z.string().date(), weight_kg: z.number().positive().nullable().optional(), water_ml: z.number().min(0).nullable().optional(), steps: z.number().int().min(0).nullable().optional(), steps_note: z.string().max(1000).optional(), meals: z.array(z.object({ meal: z.string().min(1), items: z.array(exportItem) })).default([]), beverages: z.array(exportItem).default([]) })).min(1),
 });
-const actionSchema = z.discriminatedUnion("action", [
+const idempotency = z.object({
+  source: z.string().min(1).max(50),
+  eventId: z.string().min(1).max(200),
+  operationKey: z.string().min(1).max(100),
+});
+const bodyFields = z.object({
+  weightKg: z.number().positive().max(500).optional(),
+  waistCm: z.number().positive().max(300).optional(),
+  bodyFatPercent: z.number().min(0).max(100).optional(),
+  sleepHours: z.number().min(0).max(24).optional(),
+  steps: z.number().int().min(0).max(100000).optional(),
+  note: z.string().max(1000).optional(),
+}).refine(value => Object.keys(value).length > 0);
+const amendChanges = z.object({
+  nutrition: nutrition.optional(),
+  servings: z.number().positive().optional(),
+  servingWeightG: z.number().min(0).nullable().optional(),
+  hydrationMl: z.number().min(0).max(10000).optional(),
+  source: z.enum(["nutrition_label", "restaurant_official", "ingredient_calculation", "database", "ai_estimated", "manual_estimated"]).optional(),
+  confidence: z.enum(["high", "medium", "low"]).optional(),
+  notes: z.string().max(1000).nullable().optional(),
+}).strict().refine(value => Object.keys(value).length > 0);
+export const actionSchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("log_health_event"),
+    date: z.string().date(),
+    entries: z.array(healthEventFoodEntry).max(50).default([]),
+    plainWaterMl: z.number().min(0).max(10000).default(0),
+    body: bodyFields.optional(),
+    idempotency,
+  }).refine(value => value.entries.length > 0 || value.plainWaterMl > 0 || value.body !== undefined),
   z.object({ action: z.literal("log_food"), date: z.string().date(), entries: z.array(foodEntry).min(1) }),
-  z.object({ action: z.literal("amend_food"), date: z.string().date(), entryId: z.string().min(1), changes: foodEntry.partial().omit({ id: true }).refine(value => Object.keys(value).length > 0) }),
+  z.object({ action: z.literal("amend_food"), date: z.string().date(), entryId: z.string().min(1), mode: z.enum(["standard", "history_backfill"]).default("standard"), changes: amendChanges }),
   z.object({ action: z.literal("delete_food"), date: z.string().date(), entryId: z.string().min(1) }),
   z.object({ action: z.literal("upsert_food"), food: z.object({ id: z.string().min(1).optional(), name: z.string().min(1), brand: z.string().nullable().optional(), category: z.string().nullable().optional(), servingWeightG: z.number().min(0).nullable().optional(), nutrition, favorite: z.boolean().default(false), notes: z.string().max(1000).nullable().optional() }) }),
   z.object({ action: z.literal("find_foods"), query: z.string().max(200).default(""), limit: z.number().int().min(1).max(50).default(10) }),
@@ -56,24 +96,16 @@ const importedNotes = (food: z.infer<typeof importedFood>) => [food.note, food.r
 const shiftDate = (date: string, days: number) => new Date(new Date(`${date}T12:00:00Z`).getTime() + days * 86_400_000).toISOString().slice(0, 10);
 const mealName = (meal: string) => ({ breakfast: "早餐", lunch: "午餐", dinner: "晚餐", snack: "點心", drink: "飲料", late_night: "宵夜", early_morning: "點心", all_day: "其他" }[meal] ?? "其他") as z.infer<typeof foodEntry>["meal"];
 const datesBetween = (startDate: string, endDate: string) => { const dates: string[] = []; for (let date = startDate; date <= endDate; date = shiftDate(date, 1)) { dates.push(date); if (dates.length > 90) throw new Error("date_range_too_large"); } return dates; };
-const safeNumber = (value: unknown) => typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
-const totalForEntries = (entries: FirebaseFirestore.QueryDocumentSnapshot[]) => entries.reduce((sum, document) => {
-  const data = document.data(); const canonical = data.caloriesKcal !== undefined; const servings = canonical ? safeNumber(data.servings || 1) : 1;
-  const value = (canonicalValue: unknown, legacyValue: unknown) => safeNumber(canonical ? canonicalValue : legacyValue) * servings;
-  sum.caloriesKcal += value(data.caloriesKcal, data.calories);
-  sum.proteinG += value(data.proteinG, data.protein);
-  sum.carbsG += value(data.carbsG, data.carbs);
-  sum.fatG += value(data.fatG, data.fat);
-  sum.sugarG += value(data.sugarG, data.sugar);
-  sum.fiberG += value(data.fiberG, data.fiber);
-  sum.saturatedFatG += value(data.saturatedFatG, data.saturatedFat);
-  sum.transFatG += value(data.transFatG, 0);
-  sum.sodiumMg += value(data.sodiumMg, data.sodium);
-  sum.potassiumMg += value(data.potassiumMg, 0);
-  sum.cholesterolMg += value(data.cholesterolMg, 0);
-  sum.caffeineMg += value(data.caffeineMg, 0);
-  return sum;
-}, { caloriesKcal: 0, proteinG: 0, carbsG: 0, fatG: 0, sugarG: 0, fiberG: 0, saturatedFatG: 0, transFatG: 0, sodiumMg: 0, potassiumMg: 0, cholesterolMg: 0, caffeineMg: 0 });
+const totalForEntries = (entries: FirebaseFirestore.QueryDocumentSnapshot[]) => totalForEntryData(entries.map(document => document.data()));
+const totalHydrationForEntries = (entries: FirebaseFirestore.QueryDocumentSnapshot[]) =>
+  entries.reduce((total, document) => total + Number(document.data().hydrationMl ?? 0), 0);
+const dailySummaryForDate = async (db: FirebaseFirestore.Firestore, ownerId: string, date: string) => {
+  const [entries, daily] = await Promise.all([
+    dayRef(db, ownerId, date).collection("entries").get(),
+    dayRef(db, ownerId, date).get(),
+  ]);
+  return { ...totalForEntries(entries.docs), waterMl: Number(daily.data()?.waterMl ?? 0) };
+};
 
 export async function POST(request: Request) {
   const raw = await request.text();
@@ -88,6 +120,80 @@ export async function POST(request: Request) {
   const input = parsed.data;
   const now = FieldValue.serverTimestamp();
   try {
+    if (input.action === "log_health_event") {
+      const { idempotency: idempotencyInput, ...eventPayload } = input;
+      const payloadHash = canonicalPayloadHash(eventPayload);
+      const eventDocumentId = idempotencyDocumentId(idempotencyInput);
+      const eventRef = db.doc(`users/${ownerId}/agentEvents/${eventDocumentId}`);
+      const entriesWithIds = input.entries.map(entry => ({ ...entry, id: crypto.randomUUID() }));
+
+      try {
+        const response = await db.runTransaction(async transaction => {
+          const [existingEvent, daily, existingEntries] = await Promise.all([
+            transaction.get(eventRef),
+            transaction.get(dayRef(db, ownerId, input.date)),
+            transaction.get(dayRef(db, ownerId, input.date).collection("entries")),
+          ]);
+          const existingData = existingEvent.data();
+          const idempotencyDecision = resolveIdempotency(
+            existingData ? {
+              payloadHash: String(existingData.payloadHash ?? ""),
+              response: existingData.response as Record<string, unknown>,
+            } : null,
+            payloadHash,
+          );
+          if (idempotencyDecision.kind === "replay") return idempotencyDecision.response;
+
+          const plan = buildHealthEventPlan({
+            date: input.date,
+            entries: entriesWithIds,
+            plainWaterMl: input.plainWaterMl,
+            currentWaterMl: Number(daily.data()?.waterMl ?? 0),
+            currentEntries: existingEntries.docs.map(document => document.data()),
+          });
+          const dailyUpdate: Record<string, unknown> = {
+            date: input.date,
+            waterMl: plan.waterMl,
+            updatedAt: now,
+            createdAt: now,
+          };
+          if (input.body?.weightKg !== undefined) dailyUpdate.weightKg = input.body.weightKg;
+          if (input.body?.steps !== undefined) dailyUpdate.steps = input.body.steps;
+          if (input.body?.sleepHours !== undefined) dailyUpdate.sleepHours = input.body.sleepHours;
+          transaction.set(dayRef(db, ownerId, input.date), dailyUpdate, { merge: true });
+
+          for (const entry of plan.entries) {
+            transaction.create(entryRef(db, ownerId, input.date, entry.id), { ...entry, createdAt: now, updatedAt: now });
+          }
+          if (input.body) {
+            transaction.set(db.doc(`users/${ownerId}/bodyLogs/${input.date}`), { date: input.date, ...input.body, createdAt: now, updatedAt: now }, { merge: true });
+          }
+
+          const result = {
+            ok: true,
+            action: input.action,
+            date: input.date,
+            entries: plan.entries,
+            dailySummary: plan.dailySummary,
+            replayed: false,
+          };
+          transaction.set(eventRef, {
+            ...idempotencyInput,
+            payloadHash,
+            response: result,
+            createdAt: now,
+            updatedAt: now,
+          });
+          return result;
+        });
+        return Response.json(response);
+      } catch (error) {
+        if (error instanceof Error && error.message === "idempotency_conflict") {
+          return Response.json({ error: "idempotency_conflict" }, { status: 409 });
+        }
+        throw error;
+      }
+    }
     if (input.action === "log_food") {
       const batch = db.batch();
       const hydrationMl = input.entries.reduce((total, entry) => total + entry.hydrationMl, 0);
@@ -101,25 +207,46 @@ export async function POST(request: Request) {
         return entry;
       });
       await batch.commit();
-      return Response.json({ ok: true, action: input.action, entries });
+      return Response.json({ ok: true, action: input.action, entries, dailySummary: await dailySummaryForDate(db, ownerId, input.date) });
     }
     if (input.action === "amend_food") {
-      const { nutrition: finalNutrition, portion, ...changes } = input.changes;
-      if (changes.hydrationMl !== undefined) {
-        const current = await entryRef(db, ownerId, input.date, input.entryId).get();
-        const delta = changes.hydrationMl - Number(current.data()?.hydrationMl ?? 0);
-        if (delta) await dayRef(db, ownerId, input.date).set({ date: input.date, waterMl: FieldValue.increment(delta), updatedAt: now, createdAt: now }, { merge: true });
+      try {
+        assertAllowedAmendChanges(input.changes, input.mode);
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "disallowed_amend_field" }, { status: 400 });
       }
+      const { nutrition: finalNutrition, ...changes } = input.changes;
       const nutritionChanges = finalNutrition ? { caloriesKcal: finalNutrition.calories, proteinG: finalNutrition.protein, carbsG: finalNutrition.carbs, fatG: finalNutrition.fat, sugarG: finalNutrition.sugar, fiberG: finalNutrition.fiber, saturatedFatG: finalNutrition.saturatedFat, transFatG: finalNutrition.transFat, sodiumMg: finalNutrition.sodium, potassiumMg: finalNutrition.potassium, cholesterolMg: finalNutrition.cholesterol, caffeineMg: finalNutrition.caffeine } : {};
-      await entryRef(db, ownerId, input.date, input.entryId).set({ ...changes, ...(portion !== undefined && changes.servings === undefined ? { servings: portion } : {}), ...nutritionChanges, updatedAt: now }, { merge: true });
-      return Response.json({ ok: true, action: input.action, entryId: input.entryId });
+      await db.runTransaction(async transaction => {
+        const reference = entryRef(db, ownerId, input.date, input.entryId);
+        const [allEntries, daily] = await Promise.all([
+          transaction.get(dayRef(db, ownerId, input.date).collection("entries")),
+          transaction.get(dayRef(db, ownerId, input.date)),
+        ]);
+        const current = allEntries.docs.find(document => document.id === input.entryId);
+        if (!current) throw new Error("entry_not_found");
+        if (changes.hydrationMl !== undefined) {
+          const oldHydrationMl = Number(current.data()?.hydrationMl ?? 0);
+          if (changes.hydrationMl !== oldHydrationMl) transaction.set(dayRef(db, ownerId, input.date), { date: input.date, waterMl: nextWaterMl(Number(daily.data()?.waterMl ?? 0), oldHydrationMl, changes.hydrationMl, totalHydrationForEntries(allEntries.docs)), updatedAt: now, createdAt: now }, { merge: true });
+        }
+        transaction.set(reference, { ...changes, ...nutritionChanges, updatedAt: now }, { merge: true });
+      });
+      return Response.json({ ok: true, action: input.action, entryId: input.entryId, dailySummary: await dailySummaryForDate(db, ownerId, input.date) });
     }
     if (input.action === "delete_food") {
-      const current = await entryRef(db, ownerId, input.date, input.entryId).get();
-      const hydrationMl = Number(current.data()?.hydrationMl ?? 0);
-      await entryRef(db, ownerId, input.date, input.entryId).delete();
-      if (hydrationMl) await dayRef(db, ownerId, input.date).set({ date: input.date, waterMl: FieldValue.increment(-hydrationMl), updatedAt: now, createdAt: now }, { merge: true });
-      return Response.json({ ok: true, action: input.action, entryId: input.entryId });
+      await db.runTransaction(async transaction => {
+        const reference = entryRef(db, ownerId, input.date, input.entryId);
+        const [allEntries, daily] = await Promise.all([
+          transaction.get(dayRef(db, ownerId, input.date).collection("entries")),
+          transaction.get(dayRef(db, ownerId, input.date)),
+        ]);
+        const current = allEntries.docs.find(document => document.id === input.entryId);
+        if (!current) throw new Error("entry_not_found");
+        const hydrationMl = Number(current.data()?.hydrationMl ?? 0);
+        transaction.delete(reference);
+        if (hydrationMl) transaction.set(dayRef(db, ownerId, input.date), { date: input.date, waterMl: nextWaterMl(Number(daily.data()?.waterMl ?? 0), hydrationMl, 0, totalHydrationForEntries(allEntries.docs)), updatedAt: now, createdAt: now }, { merge: true });
+      });
+      return Response.json({ ok: true, action: input.action, entryId: input.entryId, dailySummary: await dailySummaryForDate(db, ownerId, input.date) });
     }
     if (input.action === "upsert_food") {
       const id = input.food.id ?? crypto.randomUUID();
@@ -139,13 +266,13 @@ export async function POST(request: Request) {
     }
     if (input.action === "log_water") {
       await dayRef(db, ownerId, input.date).set({ date: input.date, waterMl: FieldValue.increment(input.addMl), updatedAt: now, createdAt: now }, { merge: true });
-      return Response.json({ ok: true, action: input.action, addMl: input.addMl });
+      return Response.json({ ok: true, action: input.action, addMl: input.addMl, dailySummary: await dailySummaryForDate(db, ownerId, input.date) });
     }
     if (input.action === "log_body") {
       const body = Object.fromEntries(Object.entries(input).filter(([key]) => key !== "action"));
       await db.doc(`users/${ownerId}/bodyLogs/${input.date}`).set({ ...body, updatedAt: now, createdAt: now }, { merge: true });
       await dayRef(db, ownerId, input.date).set({ date: input.date, ...(input.weightKg !== undefined ? { weightKg: input.weightKg } : {}), ...(input.steps !== undefined ? { steps: input.steps } : {}), ...(input.sleepHours !== undefined ? { sleepHours: input.sleepHours } : {}), updatedAt: now, createdAt: now }, { merge: true });
-      return Response.json({ ok: true, action: input.action });
+      return Response.json({ ok: true, action: input.action, dailySummary: await dailySummaryForDate(db, ownerId, input.date) });
     }
     if (input.action === "import_history") {
       const batch = db.batch();
