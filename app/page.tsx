@@ -232,7 +232,7 @@ function TrendSparkline({ label, unit, points, target }: { label: string; unit: 
   const min = baseMin - padding;
   const max = baseMax + padding;
   const range = Math.max(1, max - min);
-  const x = (index: number) => points.length > 1 ? index / (points.length - 1) * 100 : 50;
+  const x = (index: number) => points.length > 1 ? 14 + index / (points.length - 1) * 322 : 175;
   const y = (value: number) => 88 - (value - min) / range * 76;
   const path = points.reduce((result, point, index) => {
     if (point.value === null || !Number.isFinite(point.value)) return { path: result.path, connected: false };
@@ -240,7 +240,8 @@ function TrendSparkline({ label, unit, points, target }: { label: string; unit: 
     return { path: `${result.path}${result.path ? " " : ""}${command}${x(index).toFixed(1)},${y(point.value).toFixed(1)}`, connected: true };
   }, { path: "", connected: false }).path;
   const valueText = (value: number) => unit === "kg" ? (Math.round(value * 10) / 10).toFixed(1) : String(Math.round(value));
-  return <article className="trend-sparkline"><div className="trend-sparkline-title"><div><b>{label} 7 日平均</b><strong>{average === null ? "—" : valueText(average)} <small>{unit}</small></strong></div>{target !== undefined && <span>目標 {valueText(target)} {unit}</span>}</div>{values.length ? <><svg viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label={`${label}最近 7 天趨勢`}><path className="spark-grid" d="M0 12H100M0 50H100M0 88H100" />{target !== undefined && <path className="spark-target" d={`M0 ${y(target).toFixed(1)}H100`} />}<path className="spark-line" d={path} />{points.map((point, index) => point.value === null ? null : <circle key={point.date} className="spark-dot" cx={x(index)} cy={y(point.value)} r="2.6" />)}</svg><div className="spark-labels">{points.map(point => <span key={point.date}>{point.date.slice(8)}<b>{point.value === null ? "—" : valueText(point.value)}</b></span>)}</div></> : <p className="spark-empty">尚無{label}紀錄</p>}</article>;
+  const enoughForTrend = values.length >= 3;
+  return <article className="trend-sparkline"><div className="trend-sparkline-title"><div><b>{label} 7 日平均</b><strong>{average === null ? "—" : valueText(average)} <small>{unit}</small></strong></div>{target !== undefined && <span>目標 {valueText(target)} {unit}</span>}</div>{enoughForTrend ? <><svg viewBox="0 0 350 100" role="img" aria-label={`${label}最近 7 天趨勢`}><path className="spark-grid" d="M14 12H336M14 50H336M14 88H336" />{target !== undefined && <path className="spark-target" d={`M14 ${y(target).toFixed(1)}H336`} />}<path className="spark-line" d={path} />{points.map((point, index) => point.value === null ? null : <circle key={point.date} className="spark-dot" cx={x(index)} cy={y(point.value)} r="3.1" />)}</svg><div className="spark-labels">{points.map(point => <span key={point.date}>{point.date.slice(8)}<b>{point.value === null ? "—" : valueText(point.value)}</b></span>)}</div></> : <p className="spark-empty">{values.length ? `已有 ${values.length} 筆${label}；累積至 3 筆後顯示走勢` : `尚無${label}紀錄`}</p>}</article>;
 }
 function GoalProgress({ label, value, total }: { label: string; value: number; total: number }) { return <article><div><b>{label}</b><span>{value} / {total} 天</span></div><div className="goal-meter"><i style={{ width: `${total ? value / total * 100 : 0}%` }} /></div></article>; }
 function TargetsSettings({ initial, save }: { initial: HealthTargets; save: (targets: HealthTargets) => Promise<void> }) {
