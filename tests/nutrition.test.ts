@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calculateDailyNutrition, calculateNutritionByPortion, calculateRemainingCalories, calculateSevenDayAverage, getWeekRange, normalizeFoodRecord } from "../lib/nutrition";
+import { calculateDailyNutrition, calculateHydrationSummary, calculateNutritionByPortion, calculateRemainingCalories, calculateSevenDayAverage, getWeekRange, normalizeFoodRecord } from "../lib/nutrition";
 
 describe("nutrition utilities", () => {
   it("scales all nutrients by servings", () => expect(calculateNutritionByPortion({ caloriesKcal: 200, proteinG: 20, carbsG: 10, fatG: 5, sugarG: 1, fiberG: 2, saturatedFatG: 1, transFatG: null, sodiumMg: 200, potassiumMg: null, cholesterolMg: null, caffeineMg: 0 }, 1.5)).toMatchObject({ caloriesKcal: 300, proteinG: 30, fatG: 7.5 }));
@@ -12,4 +12,8 @@ describe("nutrition utilities", () => {
   it("keeps negative remaining calories", () => expect(calculateRemainingCalories(1850, 1900)).toBe(-50));
   it("ignores missing weights in seven day average", () => expect(calculateSevenDayAverage([76, null, 75.8])).toBe(75.9));
   it("calculates a week across month boundary", () => expect(getWeekRange(new Date("2026-08-01T12:00:00+08:00")).start).toBe("2026-07-27"));
+  it("separates plain water from hydration provided by drinks", () => {
+    const drink = normalizeFoodRecord({ id: "drink", name: "Coke Zero", hydrationMl: 330 });
+    expect(calculateHydrationSummary([drink], 900)).toEqual({ totalWaterMl: 900, beverageWaterMl: 330, plainWaterMl: 570 });
+  });
 });

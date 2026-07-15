@@ -33,6 +33,12 @@ export type FoodEntry = Nutrition & {
 
 export type FoodRecordInput = Omit<FoodEntry, "id" | "date" | "time"> & { id?: string; time?: string };
 
+export type HydrationSummary = {
+  plainWaterMl: number;
+  beverageWaterMl: number;
+  totalWaterMl: number;
+};
+
 export const meals: MealType[] = ["早餐", "午餐", "晚餐", "點心", "飲料", "宵夜", "其他"];
 export const foodCategories = ["主食", "肉類", "海鮮", "蛋類", "乳製品", "豆類", "蔬菜", "水果", "堅果", "飲料", "零食", "餐盒", "醬料", "其他"] as const;
 
@@ -93,6 +99,16 @@ export const calculateDailyNutrition = (entries: FoodEntry[]): Nutrition => entr
     sodiumMg: total.sodiumMg + value.sodiumMg, potassiumMg: (total.potassiumMg ?? 0) + (value.potassiumMg ?? 0), cholesterolMg: (total.cholesterolMg ?? 0) + (value.cholesterolMg ?? 0), caffeineMg: total.caffeineMg + value.caffeineMg,
   };
 }, emptyNutrition());
+
+/** Splits a day's tracked water into plain water and food/drink hydration. */
+export const calculateHydrationSummary = (entries: FoodEntry[], waterMl: number): HydrationSummary => {
+  const totalWaterMl = numberOr(waterMl);
+  const recordedDrinkWater = entries.reduce((total, entry) => total + numberOr(entry.hydrationMl), 0);
+  // Older entries may have hydration recorded before it was included in daily water.
+  // Keep the displayed parts consistent with the stored daily total.
+  const beverageWaterMl = Math.min(totalWaterMl, recordedDrinkWater);
+  return { totalWaterMl, beverageWaterMl, plainWaterMl: Math.max(0, totalWaterMl - beverageWaterMl) };
+};
 
 export const calculateDailyTotals = calculateDailyNutrition;
 export const calculateNutritionByPortion = (nutrition: Nutrition, servings: number): Nutrition => totalForEntry({ id: "calculation", name: "calculation", brand: null, category: null, mealType: "其他", servings, servingWeightG: null, hydrationMl: 0, time: "", notes: null, ...nutrition });

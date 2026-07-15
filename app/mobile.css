@@ -25,6 +25,13 @@
 .entry-actions button { border: 1px solid var(--line); background: #fff; border-radius: 8px; color: var(--sage-dark); cursor: pointer; font-size: 12px; padding: 7px 8px; }
 .entry-actions button:last-child { color: #a65544; }
 .food-mark { display: block; width: 20px; height: 20px; }
+.water .water-breakdown { margin: 0 0 6px; color: var(--muted); font-size: 11px; }
+.drink-shortcuts { width: 100%; margin-top: 13px; padding-top: 12px; border-top: 1px solid var(--line); }
+.drink-shortcuts > span { display: block; margin-bottom: 7px; color: var(--muted); font-size: 11px; }
+.drink-shortcuts > div { display: flex; flex-wrap: wrap; gap: 6px; }
+.drink-shortcuts button { border: 1px solid var(--line); background: #fff; border-radius: 999px; color: var(--sage-dark); cursor: pointer; font-size: 11px; line-height: 1.25; padding: 7px 9px; text-align: left; }
+.drink-shortcuts button:active { background: var(--sage-pale); transform: scale(.98); }
+.drink-shortcuts small { font-size: 10px; color: var(--muted); }
 
 @media (max-width: 760px) {
   .content { padding: 18px 16px 96px; }
@@ -51,6 +58,8 @@
   .water .meter { grid-column: 1 / 3; margin: 10px 0; }
   .water .quick-row { grid-column: 1 / 3; display: flex; margin: 0; }
   .water .quick-row button { min-height: 34px; }
+  .water .water-breakdown { grid-column: 1 / 3; margin: 4px 0 0; }
+  .water .drink-shortcuts { grid-column: 1 / 3; }
   .quick-row { display: flex; align-items: center; margin: 0 0 20px; }
   .weight-input { flex: 1; justify-content: space-between; }
   .weight-input input { width: 102px; }
