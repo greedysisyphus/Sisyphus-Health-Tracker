@@ -49,6 +49,16 @@
 .daily-guidance summary { color: var(--sage-dark); cursor: pointer; font-size: 13px; font-weight: 700; }
 .daily-guidance summary small { background: var(--sage-pale); border-radius: 999px; font-size: 10px; margin-left: 5px; padding: 2px 6px; }
 .daily-guidance ul { color: var(--muted); font-size: 12px; line-height: 1.6; margin: 9px 0 0; padding-left: 18px; }
+.weekly-summary > div { grid-template-columns: repeat(3, 1fr) !important; gap: 18px; padding-bottom: 0 !important; }
+.weekly-goals { background: #fff; border: 1px solid var(--line); border-radius: 17px; margin: 18px 0; padding: 20px; }
+.weekly-goals h2 { font-family: Georgia, "Noto Serif TC", serif; font-size: 21px; margin: 0 0 15px; }
+.weekly-goals > div { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+.weekly-goals article { min-width: 0; }
+.weekly-goals article > div:first-child { display: flex; align-items: baseline; gap: 5px; justify-content: space-between; }
+.weekly-goals b { color: var(--ink); font-size: 12px; }
+.weekly-goals span { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.goal-meter { background: var(--ring-track); border-radius: 99px; height: 7px; margin-top: 8px; overflow: hidden; }
+.goal-meter i { background: var(--sage); display: block; height: 100%; border-radius: inherit; }
 
 @media (max-width: 760px) {
   .content { padding: 18px 16px 96px; }
@@ -103,6 +113,10 @@
   .food-library article b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .food-library button { padding: 8px; }
   .library-toolbar button { flex: 0 0 auto; min-height: 42px; }
+  .weekly-summary > div { gap: 13px; }
+  .weekly-summary h2 { font-size: 18px; }
+  .weekly-goals { padding: 16px; }
+  .weekly-goals > div { grid-template-columns: 1fr; gap: 12px; }
 
   .table-wrap { border: 0; border-radius: 0; overflow: visible; }
   .table-wrap table { min-width: 0; }
