@@ -32,6 +32,19 @@
 .drink-shortcuts button { border: 1px solid var(--line); background: #fff; border-radius: 999px; color: var(--sage-dark); cursor: pointer; font-size: 11px; line-height: 1.25; padding: 7px 9px; text-align: left; }
 .drink-shortcuts button:active { background: var(--sage-pale); transform: scale(.98); }
 .drink-shortcuts small { font-size: 10px; color: var(--muted); }
+.hydration-details { width: 100%; margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
+.hydration-details summary { color: var(--sage-dark); cursor: pointer; font-size: 12px; }
+.hydration-details > div { margin-top: 8px; }
+.hydration-details p { display: flex; justify-content: space-between; gap: 12px; margin: 5px 0; color: var(--muted); font-size: 11px; }
+.hydration-details b { color: var(--ink); font-weight: 600; }
+.hydration-reminder { background: #f0f5ef; border: 1px solid #d6e4dd; border-radius: 14px; margin: 0 0 16px; padding: 14px; }
+.hydration-reminder b { color: var(--sage-dark); font-size: 13px; }
+.hydration-reminder p { color: var(--muted); font-size: 12px; line-height: 1.5; margin: 6px 0 10px; }
+.hydration-reminder div { display: flex; flex-wrap: wrap; gap: 7px; }
+.hydration-reminder button, .library-toolbar button { background: #fff; border: 1px solid var(--sage); border-radius: 9px; color: var(--sage-dark); cursor: pointer; font-size: 12px; padding: 8px 10px; }
+.library-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+.library-toolbar .search { margin: 0; }
+.library-toolbar button.active { background: var(--sage-dark); border-color: var(--sage-dark); color: #fff; }
 
 @media (max-width: 760px) {
   .content { padding: 18px 16px 96px; }
@@ -60,6 +73,7 @@
   .water .quick-row button { min-height: 34px; }
   .water .water-breakdown { grid-column: 1 / 3; margin: 4px 0 0; }
   .water .drink-shortcuts { grid-column: 1 / 3; }
+  .water .hydration-details { grid-column: 1 / 3; }
   .quick-row { display: flex; align-items: center; margin: 0 0 20px; }
   .weight-input { flex: 1; justify-content: space-between; }
   .weight-input input { width: 102px; }
@@ -84,6 +98,7 @@
   .food-library article > div:nth-child(2) { min-width: 0; flex: 1; }
   .food-library article b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .food-library button { padding: 8px; }
+  .library-toolbar button { flex: 0 0 auto; min-height: 42px; }
 
   .table-wrap { border: 0; border-radius: 0; overflow: visible; }
   .table-wrap table { min-width: 0; }
