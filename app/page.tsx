@@ -204,6 +204,10 @@ function Trends({ history }: { history: DailyOverview[] }) {
   const today = formatLocalDate(new Date());
   const start = formatLocalDate(new Date(new Date(`${today}T12:00:00`).getTime() - 6 * 86400000));
   const days = history.filter(day => day.date >= start && day.date <= today).sort((left, right) => left.date.localeCompare(right.date));
+  const timeline = Array.from({ length: 7 }, (_, index) => {
+    const date = formatLocalDate(new Date(new Date(`${start}T12:00:00`).getTime() + index * 86400000));
+    return { date, day: days.find(day => day.date === date) };
+  });
   const average = (key: keyof Nutrition) => days.length ? days.reduce((sum, day) => sum + Number(day.total[key] ?? 0), 0) / days.length : 0;
   const completed = (predicate: (day: DailyOverview) => boolean) => days.filter(predicate).length;
   const weightAverage = calculateSevenDayAverage(days.map(day => day.weightKg ?? null));
@@ -211,10 +215,32 @@ function Trends({ history }: { history: DailyOverview[] }) {
     <header><div><p className="eyebrow">WEEKLY REPORT</p><h1>這一週，走得怎麼樣？</h1><p className="muted">最近 7 天中已有 {days.length} 天紀錄；平均只計入已記錄的日期。</p></div></header>
     {!days.length ? <p className="empty">最近 7 天尚無可分析的紀錄。</p> : <>
       <section className="trend-card weekly-summary"><div><div><p>平均熱量</p><h2>{formatNutrition(average("caloriesKcal"), "kcal")}</h2></div><div><p>平均蛋白質</p><h2>{formatNutrition(average("proteinG"), "g")}</h2></div><div><p>平均纖維</p><h2>{formatNutrition(average("fiberG"), "g")}</h2></div><div><p>平均鈉</p><h2>{formatNutrition(average("sodiumMg"), "mg")}</h2></div><div><p>平均水分</p><h2>{Math.round(days.reduce((sum, day) => sum + day.waterMl, 0) / days.length)} <small>ml</small></h2></div><div><p>體重 7 日平均</p><h2>{weightAverage ?? "—"} <small>{weightAverage === null ? "未記錄" : "kg"}</small></h2></div></div></section>
-      <section className="weekly-goals"><h2>目標達成率</h2><div><GoalProgress label="蛋白質 ≥ 100 g" value={completed(day => day.total.proteinG >= 100)} total={days.length} /><GoalProgress label="水分 ≥ 2500 ml" value={completed(day => day.waterMl >= 2500)} total={days.length} /><GoalProgress label="纖維 ≥ 25 g" value={completed(day => day.total.fiberG >= 25)} total={days.length} /><GoalProgress label="鈉 ≤ 2000 mg" value={completed(day => day.total.sodiumMg <= 2000)} total={days.length} /></div></section>
+      <section className="weekly-goals"><h2>目標達成率</h2><div><GoalProgress label={`蛋白質 ≥ ${targets.proteinG} g`} value={completed(day => day.total.proteinG >= targets.proteinG)} total={days.length} /><GoalProgress label={`水分 ≥ ${targets.waterMl} ml`} value={completed(day => day.waterMl >= targets.waterMl)} total={days.length} /><GoalProgress label={`纖維 ≥ ${targets.fiberG} g`} value={completed(day => day.total.fiberG >= targets.fiberG)} total={days.length} /><GoalProgress label={`鈉 ≤ ${targets.sodiumMg} mg`} value={completed(day => day.total.sodiumMg <= targets.sodiumMg)} total={days.length} /></div></section>
+      <section className="weekly-trends"><div className="weekly-trends-heading"><div><h2>7 日變化</h2><p>空白日期會顯示為「—」，不會當作 0 計算。</p></div></div><div className="weekly-trends-grid"><TrendSparkline label="體重" unit="kg" points={timeline.map(point => ({ date: point.date, value: point.day?.weightKg ?? null }))} /><TrendSparkline label="水分" unit="ml" target={targets.waterMl} points={timeline.map(point => ({ date: point.date, value: point.day?.waterMl ?? null }))} /><TrendSparkline label="蛋白質" unit="g" target={targets.proteinG} points={timeline.map(point => ({ date: point.date, value: point.day?.total.proteinG ?? null }))} /></div></section>
       <section className="trend-card"><h2>每日熱量與蛋白質</h2><div className="nutrition-bars">{days.map(day => <div key={day.date}><div className="bar-pair"><i style={{ height: `${Math.min(100, day.total.caloriesKcal / targets.caloriesKcal * 100)}%` }} /><em style={{ height: `${Math.min(100, day.total.proteinG / targets.proteinG * 100)}%` }} /></div><span>{day.date.slice(5)}</span><b>{Math.round(day.total.caloriesKcal)}</b></div>)}</div><p className="legend"><i /> 熱量　<em /> 蛋白質</p></section>
     </>}
   </>;
+}
+type TrendPoint = { date: string; value: number | null };
+function TrendSparkline({ label, unit, points, target }: { label: string; unit: "kg" | "ml" | "g"; points: TrendPoint[]; target?: number }) {
+  const values = points.flatMap(point => point.value === null || !Number.isFinite(point.value) ? [] : [point.value]);
+  const average = values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
+  const bounds = target === undefined ? values : [...values, target];
+  const baseMin = bounds.length ? Math.min(...bounds) : 0;
+  const baseMax = bounds.length ? Math.max(...bounds) : 1;
+  const padding = baseMin === baseMax ? (unit === "kg" ? 0.5 : Math.max(1, baseMax * 0.1)) : 0;
+  const min = baseMin - padding;
+  const max = baseMax + padding;
+  const range = Math.max(1, max - min);
+  const x = (index: number) => points.length > 1 ? index / (points.length - 1) * 100 : 50;
+  const y = (value: number) => 88 - (value - min) / range * 76;
+  const path = points.reduce((result, point, index) => {
+    if (point.value === null || !Number.isFinite(point.value)) return { path: result.path, connected: false };
+    const command = result.connected ? "L" : "M";
+    return { path: `${result.path}${result.path ? " " : ""}${command}${x(index).toFixed(1)},${y(point.value).toFixed(1)}`, connected: true };
+  }, { path: "", connected: false }).path;
+  const valueText = (value: number) => unit === "kg" ? (Math.round(value * 10) / 10).toFixed(1) : String(Math.round(value));
+  return <article className="trend-sparkline"><div className="trend-sparkline-title"><div><b>{label} 7 日平均</b><strong>{average === null ? "—" : valueText(average)} <small>{unit}</small></strong></div>{target !== undefined && <span>目標 {valueText(target)} {unit}</span>}</div>{values.length ? <><svg viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label={`${label}最近 7 天趨勢`}><path className="spark-grid" d="M0 12H100M0 50H100M0 88H100" />{target !== undefined && <path className="spark-target" d={`M0 ${y(target).toFixed(1)}H100`} />}<path className="spark-line" d={path} />{points.map((point, index) => point.value === null ? null : <circle key={point.date} className="spark-dot" cx={x(index)} cy={y(point.value)} r="2.6" />)}</svg><div className="spark-labels">{points.map(point => <span key={point.date}>{point.date.slice(8)}<b>{point.value === null ? "—" : valueText(point.value)}</b></span>)}</div></> : <p className="spark-empty">尚無{label}紀錄</p>}</article>;
 }
 function GoalProgress({ label, value, total }: { label: string; value: number; total: number }) { return <article><div><b>{label}</b><span>{value} / {total} 天</span></div><div className="goal-meter"><i style={{ width: `${total ? value / total * 100 : 0}%` }} /></div></article>; }
 function TargetsSettings({ initial, save }: { initial: HealthTargets; save: (targets: HealthTargets) => Promise<void> }) {

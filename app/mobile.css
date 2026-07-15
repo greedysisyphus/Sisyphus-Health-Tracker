@@ -61,6 +61,25 @@
 .weekly-goals span { color: var(--muted); font-size: 11px; white-space: nowrap; }
 .goal-meter { background: var(--ring-track); border-radius: 99px; height: 7px; margin-top: 8px; overflow: hidden; }
 .goal-meter i { background: var(--sage); display: block; height: 100%; border-radius: inherit; }
+.weekly-trends { background: #fff; border: 1px solid var(--line); border-radius: 17px; margin: 18px 0; padding: 20px; }
+.weekly-trends-heading h2 { font-family: Georgia, "Noto Serif TC", serif; font-size: 21px; margin: 0; }
+.weekly-trends-heading p { color: var(--muted); font-size: 12px; margin: 6px 0 16px; }
+.weekly-trends-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.trend-sparkline { border: 1px solid var(--line); border-radius: 13px; min-width: 0; padding: 13px 12px 10px; }
+.trend-sparkline-title { display: flex; align-items: flex-start; justify-content: space-between; gap: 6px; }
+.trend-sparkline-title b { display: block; color: var(--muted); font-size: 11px; font-weight: 500; }
+.trend-sparkline-title strong { display: block; color: var(--ink); font-size: 21px; margin-top: 4px; }
+.trend-sparkline-title strong small { color: var(--muted); font-size: 10px; font-weight: 400; }
+.trend-sparkline-title > span { color: var(--muted); font-size: 10px; text-align: right; white-space: nowrap; }
+.trend-sparkline svg { display: block; height: 112px; margin-top: 10px; overflow: visible; width: 100%; }
+.spark-grid { fill: none; stroke: var(--line); stroke-width: .7; }
+.spark-target { fill: none; stroke: var(--ochre); stroke-dasharray: 3 3; stroke-width: 1; }
+.spark-line { fill: none; stroke: var(--sage-dark); stroke-linecap: round; stroke-linejoin: round; stroke-width: 2.2; }
+.spark-dot { fill: #fff; stroke: var(--sage-dark); stroke-width: 1.6; vector-effect: non-scaling-stroke; }
+.spark-labels { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; margin-top: 2px; }
+.spark-labels span { color: var(--muted); font-size: 9px; min-width: 0; text-align: center; }
+.spark-labels b { color: var(--ink); display: block; font-size: 9px; font-weight: 600; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; }
+.spark-empty { color: var(--muted); font-size: 12px; margin: 34px 0; text-align: center; }
 .targets-card { background: #fff; border: 1px solid var(--line); border-radius: 17px; padding: 22px; }
 
 @media (max-width: 760px) {
@@ -121,6 +140,10 @@
   .weekly-summary h2 { font-size: 18px; }
   .weekly-goals { padding: 16px; }
   .weekly-goals > div { grid-template-columns: 1fr; gap: 12px; }
+  .weekly-trends { padding: 16px; }
+  .weekly-trends-grid { grid-template-columns: 1fr; gap: 10px; }
+  .trend-sparkline { padding: 13px 12px 10px; }
+  .trend-sparkline svg { height: 96px; }
   .targets-card { padding: 18px; }
 
   .table-wrap { border: 0; border-radius: 0; overflow: visible; }
