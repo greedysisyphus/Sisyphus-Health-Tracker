@@ -1,15 +1,17 @@
 "use client";
 
 import { onAuthStateChanged, signInWithPopup, signOut, type User } from "firebase/auth";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { auth, googleProvider, hasFirebaseConfig } from "../lib/firebase";
 import { calculateDailyNutrition, calculateHydrationSummary, calculateSevenDayAverage, emptyNutrition, foodCategories, formatLocalDate, formatNutrition, meals, parseNonNegativeNumber, totalForEntry, type FoodEntry, type MealType, type Nutrition } from "../lib/nutrition";
-import { getBodyLog, getDailyLog, getUserProfile, listDailyEntries, listDailyOverviews, listFoods, removeEntry, removeSavedFood, saveBodyLog, saveEntry, saveSavedFood, saveWater, type DailyOverview, type SavedFoodInput, type SavedFoodSummary } from "../services/health-service";
+import { getBodyLog, getDailyLog, getUserProfile, listDailyEntries, listDailyOverviews, listFoods, removeEntry, removeSavedFood, saveBodyLog, saveEntry, saveHealthTargets, saveSavedFood, saveWater, type DailyOverview, type SavedFoodInput, type SavedFoodSummary } from "../services/health-service";
 
-type View = "daily" | "overview" | "trends" | "foods";
+type View = "daily" | "overview" | "trends" | "foods" | "settings";
 type EditorState = FoodEntry | null | undefined;
 type AnalysisTexts = Partial<Record<1 | 3 | 7, string>>;
-const targets = { caloriesKcal: 1800, proteinG: 120, carbsG: 200, fatG: 60, waterMl: 2800 };
+type HealthTargets = { caloriesKcal: number; proteinG: number; carbsG: number; fatG: number; waterMl: number; fiberG: number; sodiumMg: number };
+const defaultTargets: HealthTargets = { caloriesKcal: 1800, proteinG: 120, carbsG: 200, fatG: 60, waterMl: 2800, fiberG: 25, sodiumMg: 2000 };
+const TargetsContext = createContext<HealthTargets>(defaultTargets);
 const dateLabel = (date: string) => new Intl.DateTimeFormat("zh-TW", { month: "long", day: "numeric", timeZone: "Asia/Taipei" }).format(new Date(`${date}T12:00:00`));
 const nowTime = () => new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Taipei" }).format(new Date());
 
@@ -29,6 +31,7 @@ export default function Home() {
   const [exporting, setExporting] = useState(false);
   const [analysisTexts, setAnalysisTexts] = useState<AnalysisTexts>({});
   const [analysisPreparing, setAnalysisPreparing] = useState(false);
+  const [targetState, setTargets] = useState<HealthTargets>(defaultTargets);
   const totals = useMemo(() => calculateDailyNutrition(entries), [entries]);
 
   useEffect(() => {
@@ -49,6 +52,7 @@ export default function Home() {
   const loadLibrary = useCallback(async () => { if (user) setSavedFoods(await listFoods(user.uid)); }, [user]);
   useEffect(() => { const timer = window.setTimeout(() => { void loadDaily(); }, 0); return () => window.clearTimeout(timer); }, [loadDaily]);
   useEffect(() => { const timer = window.setTimeout(() => { void loadLibrary().catch(() => setNotice("讀取常用食物失敗。")); }, 0); return () => window.clearTimeout(timer); }, [loadLibrary]);
+  useEffect(() => { if (!user) return; void getUserProfile(user.uid).then(profile => { if (!profile) return; setTargets(current => ({ ...current, caloriesKcal: Number(profile.calorieTarget) || current.caloriesKcal, proteinG: Number(profile.proteinTarget) || current.proteinG, carbsG: Number(profile.carbTarget) || current.carbsG, fatG: Number(profile.fatTarget) || current.fatG, waterMl: Number(profile.waterTargetMl) || current.waterMl, fiberG: Number(profile.fiberTarget) || current.fiberG, sodiumMg: Number(profile.sodiumLimit) || current.sodiumMg })); }).catch(() => setNotice("讀取個人目標失敗。")); }, [user]);
   useEffect(() => { if (view === "daily") return; const timer = window.setTimeout(() => { void listDailyOverviews(user?.uid ?? "").then(setHistory).catch(() => setNotice("讀取彙整資料失敗。")); }, 0); return () => window.clearTimeout(timer); }, [user?.uid, view]);
 
   const saveDailyEntry = async (entry: FoodEntry) => {
@@ -63,7 +67,7 @@ export default function Home() {
     try {
       const hydrationMl = food.hydrationMlPerServing;
       await saveEntry(user.uid, date, {
-        id: crypto.randomUUID(), name: food.name, brand: food.brand, category: food.category ?? "飲料", mealType: "飲料", servings: 1,
+        id: crypto.randomUUID(), name: food.name, brand: food.brand, category: food.category, mealType: food.category === "飲料" || hydrationMl > 0 ? "飲料" : "點心", servings: 1,
         servingWeightG: food.servingWeightG, ...food.nutrition, hydrationMl, time: nowTime(), notes: food.notes, source: "database", confidence: "high", sourceFoodId: food.id,
       });
       await loadDaily();
@@ -82,7 +86,7 @@ export default function Home() {
     if (!user) return;
     const [days, profile] = await Promise.all([listDailyOverviews(user.uid, 365), getUserProfile(user.uid)]);
     const records = days.filter(day => day.date >= startDate && day.date <= endDate).sort((a, b) => a.date.localeCompare(b.date)).map(day => ({ date: day.date, weight_kg: day.weightKg ?? null, water_ml: day.waterMl, steps: day.steps ?? null, foods: day.entries, summary: day.total }));
-    const payload = { schema_version: "2.0", exported_at: new Date().toISOString(), timezone: "Asia/Taipei", profile, targets, date_range: { start: startDate, end: endDate }, daily_records: records };
+    const payload = { schema_version: "2.0", exported_at: new Date().toISOString(), timezone: "Asia/Taipei", profile, targets: targetState, date_range: { start: startDate, end: endDate }, daily_records: records };
     const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" })); const link = document.createElement("a"); link.href = url; link.download = `health-records_${startDate}_to_${endDate}.json`; link.click(); URL.revokeObjectURL(url);
   };
   const prepareChatGPTAnalysis = async () => {
@@ -114,7 +118,7 @@ export default function Home() {
   if (loading && !user) return <main className="setup"><p className="eyebrow">日常營養</p><h1>正在確認登入狀態…</h1></main>;
   if (!user) return <main className="setup"><p className="eyebrow">日常營養</p><h1>把健康資料放在你自己手中。</h1><p>登入後即可保存飲食、喝水、體重與 Hermes 的自動紀錄。</p><button className="primary" onClick={() => void signInWithPopup(auth!, googleProvider!)}>使用 Google 登入</button></main>;
 
-  return <main className="app-shell">
+  return <TargetsContext.Provider value={targetState}><main className="app-shell">
     <aside className="sidebar"><div className="brand"><i>n</i><span>日常營養</span></div><p className="side-date">飲食、體重與喝水，都會安全地儲存在你的帳號。</p><Nav view={view} setView={setView} /><div className="profile"><div>{(user.displayName ?? user.email ?? "你").slice(0, 1)}</div><span>{user.displayName ?? "我的帳號"}<small>{user.email}</small></span><button className="text-button" onClick={() => void signOut(auth!)}>登出</button></div></aside>
     <section className="content">
       <div className="mobile-topbar"><div className="brand"><i>n</i><span>日常營養</span></div><button className="text-button" onClick={() => void signOut(auth!)}>登出</button></div>
@@ -122,16 +126,17 @@ export default function Home() {
       {view === "overview" && <Overview history={history} openDate={next => { setDate(next); setView("daily"); }} exportData={openExport} />}
       {view === "trends" && <Trends history={history} />}
       {view === "foods" && <FoodLibrary foods={savedFoods} add={() => setFoodEditor(null)} edit={setFoodEditor} remove={deleteFood} applySuggestedHydration={applySuggestedHydration} />}
+      {view === "settings" && <TargetsSettings initial={targetState} save={async next => { if (!user) return; await saveHealthTargets(user.uid, { calorieTarget: next.caloriesKcal, proteinTarget: next.proteinG, carbTarget: next.carbsG, fatTarget: next.fatG, waterTargetMl: next.waterMl, fiberTarget: next.fiberG, sodiumLimit: next.sodiumMg }); setTargets(next); setNotice("已更新每日目標。"); }} />}
     </section>
     {entryEditor !== undefined && <EntryEditor initial={entryEditor} savedFoods={savedFoods} close={() => setEntryEditor(undefined)} save={saveDailyEntry} />}
     {foodEditor !== undefined && <SavedFoodEditor initial={foodEditor} close={() => setFoodEditor(undefined)} save={saveFood} />}
     {exporting && <ExportSheet close={() => setExporting(false)} exportRecords={exportRecords} copyAnalysis={copyChatGPTAnalysis} analysisReady={Boolean(analysisTexts[1])} analysisPreparing={analysisPreparing} />}
     <Nav view={view} setView={setView} mobile />
-  </main>;
+  </main></TargetsContext.Provider>;
 }
 
 function FoodMark() { return <svg className="food-mark" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M4 5v5a3 3 0 0 0 6 0V5M7 5v15M15 4v16M15 4c3 1 4 3 4 6v3h-4" strokeLinecap="round" strokeLinejoin="round" /></svg>; }
-function Nav({ view, setView, mobile = false }: { view: View; setView: (view: View) => void; mobile?: boolean }) { const items: { id: View; label: string; icon: string }[] = [{ id: "daily", label: "每日", icon: "◌" }, { id: "overview", label: "總覽", icon: "▦" }, { id: "trends", label: "趨勢", icon: "〽" }, { id: "foods", label: "食物", icon: "" }]; return <nav className={mobile ? "bottom-nav" : "side-nav"} aria-label="主要功能">{items.map(item => <button key={item.id} className={view === item.id ? "active" : ""} onClick={() => setView(item.id)}><b>{item.id === "foods" ? <FoodMark /> : item.icon}</b><span>{mobile ? item.label : item.id === "foods" ? "我的食物" : `　${item.label}${item.id === "daily" ? "紀錄" : ""}`}</span></button>)}</nav>; }
+function Nav({ view, setView, mobile = false }: { view: View; setView: (view: View) => void; mobile?: boolean }) { const items: { id: View; label: string; icon: string }[] = [{ id: "daily", label: "每日", icon: "◌" }, { id: "overview", label: "總覽", icon: "▦" }, { id: "trends", label: "趨勢", icon: "〽" }, { id: "foods", label: "食物", icon: "" }, { id: "settings", label: "目標", icon: "⚙" }]; return <nav className={mobile ? "bottom-nav" : "side-nav"} aria-label="主要功能">{items.map(item => <button key={item.id} className={view === item.id ? "active" : ""} onClick={() => setView(item.id)}><b>{item.id === "foods" ? <FoodMark /> : item.icon}</b><span>{mobile ? item.label : item.id === "foods" ? "我的食物" : `　${item.label}${item.id === "daily" ? "紀錄" : ""}`}</span></button>)}</nav>; }
 function SetupScreen() { return <main className="setup"><p className="eyebrow">需要連接 Firebase</p><h1>日常營養準備好了。</h1><p>請先設定 Firebase 後重新部署。</p></main>; }
 function entryNutrition(entry: FoodEntry): Nutrition { const { caloriesKcal, proteinG, carbsG, fatG, fiberG, sugarG, saturatedFatG, transFatG, sodiumMg, potassiumMg, cholesterolMg, caffeineMg } = entry; return { caloriesKcal, proteinG, carbsG, fatG, fiberG, sugarG, saturatedFatG, transFatG, sodiumMg, potassiumMg, cholesterolMg, caffeineMg }; }
 function summaryLine(total: Nutrition) { return `熱量 ${formatNutrition(total.caloriesKcal, "kcal")}｜蛋白質 ${formatNutrition(total.proteinG, "g")}｜碳水 ${formatNutrition(total.carbsG, "g")}｜脂肪 ${formatNutrition(total.fatG, "g")}｜纖維 ${formatNutrition(total.fiberG, "g")}｜鈉 ${formatNutrition(total.sodiumMg, "mg")}`; }
@@ -154,10 +159,11 @@ async function copyPlainText(text: string): Promise<boolean> {
 }
 
 function DailyView({ date, setDate, totals, entries, waterMl, weightKg, loading, notice, savedFoods, setEntryEditor, deleteEntry, saveAsCommon, addWater, quickAddDrink, updateWeight, exportData }: { date: string; setDate: (value: string) => void; totals: Nutrition; entries: FoodEntry[]; waterMl: number; weightKg?: number; loading: boolean; notice: string; savedFoods: SavedFoodSummary[]; setEntryEditor: (entry: EditorState) => void; deleteEntry: (id: string) => Promise<void>; saveAsCommon: (entry: FoodEntry) => Promise<void>; addWater: (amount: number) => Promise<void>; quickAddDrink: (food: SavedFoodSummary) => Promise<void>; updateWeight: (value: string) => Promise<void>; exportData: () => void }) {
+  const targets = useContext(TargetsContext);
   const previous = () => setDate(formatLocalDate(new Date(new Date(`${date}T12:00:00`).getTime() - 86400000)));
   const next = () => setDate(formatLocalDate(new Date(new Date(`${date}T12:00:00`).getTime() + 86400000)));
   const hydration = calculateHydrationSummary(entries, waterMl);
-  const quickDrinks = savedFoods.filter(food => food.hydrationMlPerServing > 0).sort((left, right) => right.useCount - left.useCount).slice(0, 3);
+  const quickDrinks = [...savedFoods].sort((left, right) => right.useCount - left.useCount).slice(0, 5);
   const hydratingEntries = entries.filter(entry => entry.hydrationMl > 0);
   return <>
     <div className="date-bar"><button onClick={previous}><b>‹ 前一天</b></button><label>指定日期<input type="date" value={date} onChange={event => setDate(event.target.value)} /></label><button onClick={next}><b>後一天 ›</b></button></div>
@@ -165,7 +171,7 @@ function DailyView({ date, setDate, totals, entries, waterMl, weightKg, loading,
     {notice && <p className="notice">{notice}</p>}
     <DailyGuidance totals={totals} waterMl={hydration.totalWaterMl} entries={entries} weightKg={weightKg} />
     <section className="hero-card"><div><p>今日熱量</p><div className="calorie"><strong>{Math.round(totals.caloriesKcal)}</strong><span> / {targets.caloriesKcal} kcal</span></div><div className="meter"><i style={{ width: `${Math.min(100, totals.caloriesKcal / targets.caloriesKcal * 100)}%` }} /></div><p className={totals.caloriesKcal > targets.caloriesKcal ? "over" : "remaining"}>{totals.caloriesKcal > targets.caloriesKcal ? `超出 ${Math.round(totals.caloriesKcal - targets.caloriesKcal)} kcal` : `剩餘 ${Math.round(targets.caloriesKcal - totals.caloriesKcal)} kcal`}</p></div><div className="weight"><span>當日紀錄</span><strong>{entries.length} <small>項</small></strong><p>纖維 {formatNutrition(totals.fiberG, "g")} · 鈉 {formatNutrition(totals.sodiumMg, "mg")}</p></div></section>
-    <section className="macro-row"><Metric label="蛋白質" value={totals.proteinG} target={targets.proteinG} /><Metric label="碳水" value={totals.carbsG} target={targets.carbsG} /><Metric label="脂肪" value={totals.fatG} target={targets.fatG} /><div className="water"><span>水分（含飲品）</span><strong>{hydration.totalWaterMl} <small>ml</small></strong><p className="water-breakdown">白水 {hydration.plainWaterMl} ml ・ 飲品 {hydration.beverageWaterMl} ml</p><div className="meter water-meter"><i style={{ width: `${Math.min(100, hydration.totalWaterMl / targets.waterMl * 100)}%` }} /></div><div className="quick-row"><button onClick={() => void addWater(250)}>＋250 ml</button><button onClick={() => void addWater(500)}>＋500 ml</button></div>{quickDrinks.length > 0 && <div className="drink-shortcuts"><span>快速加入飲品</span><div>{quickDrinks.map(food => <button key={food.id} onClick={() => void quickAddDrink(food)}>＋ {food.name} <small>{Math.round(food.hydrationMlPerServing)} ml</small></button>)}</div></div>}{hydratingEntries.length > 0 && <details className="hydration-details"><summary>查看水分明細</summary><div><p>白水 <b>{hydration.plainWaterMl} ml</b></p>{hydratingEntries.map(entry => <p key={entry.id}>{entry.name} <b>{Math.round(entry.hydrationMl)} ml</b></p>)}</div></details>}</div></section>
+    <section className="macro-row"><Metric label="蛋白質" value={totals.proteinG} target={targets.proteinG} /><Metric label="碳水" value={totals.carbsG} target={targets.carbsG} /><Metric label="脂肪" value={totals.fatG} target={targets.fatG} /><div className="water"><span>水分（含飲品）</span><strong>{hydration.totalWaterMl} <small>ml</small></strong><p className="water-breakdown">白水 {hydration.plainWaterMl} ml ・ 飲品 {hydration.beverageWaterMl} ml</p><div className="meter water-meter"><i style={{ width: `${Math.min(100, hydration.totalWaterMl / targets.waterMl * 100)}%` }} /></div><div className="quick-row"><button onClick={() => void addWater(250)}>＋250 ml</button><button onClick={() => void addWater(500)}>＋500 ml</button></div>{quickDrinks.length > 0 && <div className="drink-shortcuts"><span>快速加入常用食物</span><div>{quickDrinks.map(food => <button key={food.id} onClick={() => void quickAddDrink(food)}>＋ {food.name}{food.hydrationMlPerServing > 0 && <small>{Math.round(food.hydrationMlPerServing)} ml</small>}</button>)}</div></div>}{hydratingEntries.length > 0 && <details className="hydration-details"><summary>查看水分明細</summary><div><p>白水 <b>{hydration.plainWaterMl} ml</b></p>{hydratingEntries.map(entry => <p key={entry.id}>{entry.name} <b>{Math.round(entry.hydrationMl)} ml</b></p>)}</div></details>}</div></section>
     <section className="daily-secondary"><b>纖維 {formatNutrition(totals.fiberG, "g")}</b><b>糖 {formatNutrition(totals.sugarG, "g")}</b><b>飽和脂肪 {formatNutrition(totals.saturatedFatG, "g")}</b><b>咖啡因 {formatNutrition(totals.caffeineMg, "mg")}</b><b>鉀 {formatNutrition(totals.potassiumMg, "mg")}</b><b>膽固醇 {formatNutrition(totals.cholesterolMg, "mg")}</b></section>
     <section className="quick-row"><label className="weight-input">體重（kg）<input type="number" inputMode="decimal" min="1" step="0.1" defaultValue={weightKg} key={`${date}-${weightKg}`} onBlur={event => void updateWeight(event.target.value)} /></label></section>
     <div className="section-heading"><div><h2>{loading ? "載入中…" : "今天吃了什麼"}</h2><p>修改單次紀錄不會影響常用食物。</p></div></div><EntryList entries={entries} edit={setEntryEditor} remove={deleteEntry} saveAsCommon={saveAsCommon} />
@@ -173,6 +179,7 @@ function DailyView({ date, setDate, totals, entries, waterMl, weightKg, loading,
 }
 function Metric({ label, value, target }: { label: string; value: number; target: number }) { return <div className="ring-wrap"><div className="ring" style={{ background: `conic-gradient(var(--sage) ${Math.min(100, value / target * 100)}%,var(--ring-track) 0)` }}><div className="ring-hole"><strong>{Math.round(value)}</strong><span>/{target}g</span></div></div><span>{label}</span></div>; }
 function DailyGuidance({ totals, waterMl, entries, weightKg }: { totals: Nutrition; waterMl: number; entries: FoodEntry[]; weightKg?: number }) {
+  const targets = useContext(TargetsContext);
   const reminders: string[] = [];
   if (!entries.length) reminders.push("今天尚未登記食物。");
   if (waterMl < targets.waterMl) reminders.push(`水分還差 ${Math.max(0, targets.waterMl - waterMl)} ml。`);
@@ -185,6 +192,7 @@ function DailyGuidance({ totals, waterMl, entries, weightKg }: { totals: Nutriti
 function EntryList({ entries, edit, remove, saveAsCommon }: { entries: FoodEntry[]; edit: (entry: FoodEntry) => void; remove: (id: string) => Promise<void>; saveAsCommon: (entry: FoodEntry) => Promise<void> }) { return <section className="entry-list">{entries.length ? entries.map(entry => { const total = totalForEntry(entry); return <article className="entry" key={entry.id}><div className="food-icon"><FoodMark /></div><div><b>{entry.name}</b><p>{entry.mealType} · {entry.servings} 份{entry.brand ? ` · ${entry.brand}` : ""}</p></div><div className="entry-nutrition"><b>{Math.round(total.caloriesKcal)} <small>kcal</small></b><span>P {formatNutrition(total.proteinG, "g")}　C {formatNutrition(total.carbsG, "g")}　F {formatNutrition(total.fatG, "g")}</span></div><div className="entry-actions"><button onClick={() => void saveAsCommon(entry)}>常用</button><button onClick={() => edit(entry)}>編輯</button><button onClick={() => void remove(entry.id)}>刪除</button></div></article>; }) : <p className="empty">今天還沒有飲食紀錄。可直接新增一筆，或傳訊息給 Hermes。</p>}</section>; }
 function Overview({ history, openDate, exportData }: { history: DailyOverview[]; openDate: (date: string) => void; exportData: () => void }) { return <><header><div><p className="eyebrow">DAILY OVERVIEW</p><h1>每一日，都有脈絡。</h1><p className="muted">顯示已紀錄日期；點選任一列回到完整明細。</p></div><button className="copy-btn" onClick={exportData}>匯出資料</button></header><div className="table-wrap"><table><thead><tr><th>日期</th><th>熱量</th><th>蛋白質</th><th>碳水／脂肪</th><th>纖維／鈉</th><th>飲水</th><th></th></tr></thead><tbody>{history.length ? history.map(day => <tr key={day.date}><td><b>{dateLabel(day.date)}</b><small>{day.entries.length} 項食物紀錄</small></td><td>{formatNutrition(day.total.caloriesKcal, "kcal")}</td><td>{formatNutrition(day.total.proteinG, "g")}</td><td>{formatNutrition(day.total.carbsG, "g")} ／ {formatNutrition(day.total.fatG, "g")}</td><td>{formatNutrition(day.total.fiberG, "g")} ／ {formatNutrition(day.total.sodiumMg, "mg")}</td><td>{day.waterMl} ml</td><td><button className="table-edit" onClick={() => openDate(day.date)}>查看</button></td></tr>) : <tr><td colSpan={7}>還沒有可彙整的紀錄。</td></tr>}</tbody></table></div></> }
 function Trends({ history }: { history: DailyOverview[] }) {
+  const targets = useContext(TargetsContext);
   const today = formatLocalDate(new Date());
   const start = formatLocalDate(new Date(new Date(`${today}T12:00:00`).getTime() - 6 * 86400000));
   const days = history.filter(day => day.date >= start && day.date <= today).sort((left, right) => left.date.localeCompare(right.date));
@@ -201,6 +209,12 @@ function Trends({ history }: { history: DailyOverview[] }) {
   </>;
 }
 function GoalProgress({ label, value, total }: { label: string; value: number; total: number }) { return <article><div><b>{label}</b><span>{value} / {total} 天</span></div><div className="goal-meter"><i style={{ width: `${total ? value / total * 100 : 0}%` }} /></div></article>; }
+function TargetsSettings({ initial, save }: { initial: HealthTargets; save: (targets: HealthTargets) => Promise<void> }) {
+  const [values, setValues] = useState(initial);
+  const [saving, setSaving] = useState(false);
+  const fields: { key: keyof HealthTargets; label: string; unit: string }[] = [{ key: "caloriesKcal", label: "每日熱量", unit: "kcal" }, { key: "proteinG", label: "蛋白質", unit: "g" }, { key: "carbsG", label: "碳水", unit: "g" }, { key: "fatG", label: "脂肪", unit: "g" }, { key: "waterMl", label: "飲水", unit: "ml" }, { key: "fiberG", label: "纖維", unit: "g" }, { key: "sodiumMg", label: "鈉上限", unit: "mg" }];
+  return <><header><div><p className="eyebrow">MY TARGETS</p><h1>你的目標，由你決定。</h1><p className="muted">設定後會套用到每日卡片、提醒、週報與匯出資料。</p></div></header><section className="targets-card"><div className="form-grid">{fields.map(field => <label key={field.key}>{field.label} {field.unit}<input type="number" inputMode="decimal" min="0" step="any" value={values[field.key]} onChange={event => { const value = parseNonNegativeNumber(event.target.value); if (value !== null) setValues({ ...values, [field.key]: value }); }} /></label>)}</div><button className="save-btn" disabled={saving} onClick={() => { setSaving(true); void save(values).finally(() => setSaving(false)); }}>{saving ? "儲存中…" : "儲存每日目標"}</button></section></>;
+}
 const hydrationSuggestionFor = (food: SavedFoodSummary): number | null => {
   const text = `${food.name} ${food.brand ?? ""}`.toLowerCase();
   if (text.includes("coke zero") || text.includes("可樂 zero") || text.includes("可口可樂 zero")) return 330;

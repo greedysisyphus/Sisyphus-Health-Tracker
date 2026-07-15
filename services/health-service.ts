@@ -62,6 +62,11 @@ export async function getUserProfile(userId: string): Promise<Record<string, unk
   return snapshot.exists() ? snapshot.data() : null;
 }
 
+export async function saveHealthTargets(userId: string, targets: Record<string, number>): Promise<void> {
+  if (!db) throw new Error("Firebase 尚未設定");
+  await setDoc(doc(db, `users/${userId}`), { ...targets, updatedAt: serverTimestamp(), createdAt: serverTimestamp() }, { merge: true });
+}
+
 export async function saveBodyLog(userId: string, bodyLog: Omit<BodyLog, "createdAt" | "updatedAt">): Promise<void> {
   if (!db) throw new Error("Firebase 尚未設定");
   await setDoc(doc(db, `users/${userId}/bodyLogs/${bodyLog.date}`), { ...bodyLog, updatedAt: serverTimestamp(), createdAt: serverTimestamp() }, { merge: true });

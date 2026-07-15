@@ -59,6 +59,7 @@
 .weekly-goals span { color: var(--muted); font-size: 11px; white-space: nowrap; }
 .goal-meter { background: var(--ring-track); border-radius: 99px; height: 7px; margin-top: 8px; overflow: hidden; }
 .goal-meter i { background: var(--sage); display: block; height: 100%; border-radius: inherit; }
+.targets-card { background: #fff; border: 1px solid var(--line); border-radius: 17px; padding: 22px; }
 
 @media (max-width: 760px) {
   .content { padding: 18px 16px 96px; }
@@ -117,6 +118,7 @@
   .weekly-summary h2 { font-size: 18px; }
   .weekly-goals { padding: 16px; }
   .weekly-goals > div { grid-template-columns: 1fr; gap: 12px; }
+  .targets-card { padding: 18px; }
 
   .table-wrap { border: 0; border-radius: 0; overflow: visible; }
   .table-wrap table { min-width: 0; }
