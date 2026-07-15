@@ -69,7 +69,7 @@ export const actionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("log_food"), date: z.string().date(), entries: z.array(foodEntry).min(1) }),
   z.object({ action: z.literal("amend_food"), date: z.string().date(), entryId: z.string().min(1), mode: z.enum(["standard", "history_backfill"]).default("standard"), changes: amendChanges }),
   z.object({ action: z.literal("delete_food"), date: z.string().date(), entryId: z.string().min(1) }),
-  z.object({ action: z.literal("upsert_food"), food: z.object({ id: z.string().min(1).optional(), name: z.string().min(1), brand: z.string().nullable().optional(), category: z.string().nullable().optional(), servingWeightG: z.number().min(0).nullable().optional(), nutrition, favorite: z.boolean().default(false), notes: z.string().max(1000).nullable().optional() }) }),
+  z.object({ action: z.literal("upsert_food"), food: z.object({ id: z.string().min(1).optional(), name: z.string().min(1), brand: z.string().nullable().optional(), category: z.string().nullable().optional(), servingWeightG: z.number().min(0).nullable().optional(), hydrationMlPerServing: z.number().min(0).max(10000).default(0), nutrition, favorite: z.boolean().default(false), notes: z.string().max(1000).nullable().optional() }) }),
   z.object({ action: z.literal("find_foods"), query: z.string().max(200).default(""), limit: z.number().int().min(1).max(50).default(10) }),
   z.object({ action: z.literal("log_water"), date: z.string().date(), addMl: z.number().positive().max(10000) }),
   z.object({ action: z.literal("log_body"), date: z.string().date(), weightKg: z.number().positive().max(500).optional(), waistCm: z.number().positive().max(300).optional(), bodyFatPercent: z.number().min(0).max(100).optional(), sleepHours: z.number().min(0).max(24).optional(), steps: z.number().int().min(0).max(100000).optional(), note: z.string().max(1000).optional() }).refine(value => Object.keys(value).some(key => !["action", "date"].includes(key))),
@@ -252,7 +252,7 @@ export async function POST(request: Request) {
       const id = input.food.id ?? crypto.randomUUID();
       const nutrition = input.food.nutrition;
       await db.doc(`users/${ownerId}/foods/${id}`).set({
-        id, name: input.food.name, brand: input.food.brand ?? null, category: input.food.category ?? null, servingWeightG: input.food.servingWeightG ?? null,
+        id, name: input.food.name, brand: input.food.brand ?? null, category: input.food.category ?? null, servingWeightG: input.food.servingWeightG ?? null, hydrationMlPerServing: input.food.hydrationMlPerServing,
         nutrition: { caloriesKcal: nutrition.calories, proteinG: nutrition.protein, carbsG: nutrition.carbs, fatG: nutrition.fat, fiberG: nutrition.fiber, sugarG: nutrition.sugar, saturatedFatG: nutrition.saturatedFat, transFatG: nutrition.transFat, sodiumMg: nutrition.sodium, potassiumMg: nutrition.potassium, cholesterolMg: nutrition.cholesterol, caffeineMg: nutrition.caffeine },
         favorite: input.food.favorite, notes: input.food.notes ?? null, useCount: 0, createdAt: now, updatedAt: now,
       }, { merge: true });
