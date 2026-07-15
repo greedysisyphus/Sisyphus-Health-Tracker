@@ -1,4 +1,4 @@
-import { collection, deleteDoc, doc, getDoc, getDocs, limit, orderBy, query, runTransaction, serverTimestamp, setDoc } from "firebase/firestore";
+import { collection, deleteDoc, doc, getDoc, getDocs, increment, limit, orderBy, query, runTransaction, serverTimestamp, setDoc } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { calculateDailyNutrition, normalizeFoodRecord, type FoodEntry, type Nutrition } from "../lib/nutrition";
 import type { BodyLog, DailyLog } from "../types/models";
@@ -18,11 +18,13 @@ export async function saveEntry(userId: string, date: string, entry: FoodEntry):
   if (!db) throw new Error("Firebase 尚未設定");
   const dayRef = doc(db, dailyPath(userId, date));
   const entryDocument = doc(db, dailyPath(userId, date), "entries", entry.id);
+  const savedFoodDocument = entry.sourceFoodId ? doc(db, `users/${userId}/foods/${entry.sourceFoodId}`) : null;
   await runTransaction(db, async transaction => {
-    const [daily, previous] = await Promise.all([transaction.get(dayRef), transaction.get(entryDocument)]);
+    const [daily, previous, savedFood] = await Promise.all([transaction.get(dayRef), transaction.get(entryDocument), savedFoodDocument ? transaction.get(savedFoodDocument) : Promise.resolve(null)]);
     const nextWaterMl = Math.max(0, hydration(daily.data()?.waterMl) + hydration(entry.hydrationMl) - hydration(previous.data()?.hydrationMl));
     transaction.set(dayRef, { date, waterMl: nextWaterMl, updatedAt: serverTimestamp(), createdAt: serverTimestamp() }, { merge: true });
     transaction.set(entryDocument, { ...entry, updatedAt: serverTimestamp(), createdAt: serverTimestamp() }, { merge: true });
+    if (!previous.exists() && savedFood?.exists() && savedFoodDocument) transaction.update(savedFoodDocument, { useCount: increment(1), updatedAt: serverTimestamp() });
   });
 }
 
@@ -75,8 +77,8 @@ export async function listDailyOverviews(userId: string, count = 30): Promise<Da
   }));
 }
 
-export type SavedFoodSummary = { id: string; name: string; brand: string | null; category: string | null; servingWeightG: number | null; hydrationMlPerServing: number; nutrition: Nutrition; favorite?: boolean; notes: string | null };
-export type SavedFoodInput = SavedFoodSummary;
+export type SavedFoodSummary = { id: string; name: string; brand: string | null; category: string | null; servingWeightG: number | null; hydrationMlPerServing: number; nutrition: Nutrition; favorite?: boolean; useCount: number; notes: string | null };
+export type SavedFoodInput = Omit<SavedFoodSummary, "useCount"> & { useCount?: number };
 
 export async function listFoods(userId: string): Promise<SavedFoodSummary[]> {
   if (!db) return [];
@@ -85,13 +87,13 @@ export async function listFoods(userId: string): Promise<SavedFoodSummary[]> {
     const data = item.data();
     const nestedNutrition = data.nutrition && typeof data.nutrition === "object" ? data.nutrition as Record<string, unknown> : {};
     const normalized = normalizeFoodRecord({ ...data, ...nestedNutrition, id: item.id, mealType: "其他", servings: 1, servingWeightG: data.servingWeightG ?? data.baseAmount, notes: data.notes ?? null }, item.id);
-    return { id: item.id, name: normalized.name, brand: normalized.brand, category: normalized.category, servingWeightG: normalized.servingWeightG, hydrationMlPerServing: hydration(data.hydrationMlPerServing), nutrition: { caloriesKcal: normalized.caloriesKcal, proteinG: normalized.proteinG, carbsG: normalized.carbsG, fatG: normalized.fatG, fiberG: normalized.fiberG, sugarG: normalized.sugarG, saturatedFatG: normalized.saturatedFatG, transFatG: normalized.transFatG, sodiumMg: normalized.sodiumMg, potassiumMg: normalized.potassiumMg, cholesterolMg: normalized.cholesterolMg, caffeineMg: normalized.caffeineMg }, favorite: Boolean(data.favorite), notes: normalized.notes };
-  });
+    return { id: item.id, name: normalized.name, brand: normalized.brand, category: normalized.category, servingWeightG: normalized.servingWeightG, hydrationMlPerServing: hydration(data.hydrationMlPerServing), nutrition: { caloriesKcal: normalized.caloriesKcal, proteinG: normalized.proteinG, carbsG: normalized.carbsG, fatG: normalized.fatG, fiberG: normalized.fiberG, sugarG: normalized.sugarG, saturatedFatG: normalized.saturatedFatG, transFatG: normalized.transFatG, sodiumMg: normalized.sodiumMg, potassiumMg: normalized.potassiumMg, cholesterolMg: normalized.cholesterolMg, caffeineMg: normalized.caffeineMg }, favorite: Boolean(data.favorite), useCount: hydration(data.useCount), notes: normalized.notes };
+  }).sort((left, right) => right.useCount - left.useCount || left.name.localeCompare(right.name, "zh-Hant"));
 }
 
 export async function saveSavedFood(userId: string, food: SavedFoodInput): Promise<void> {
   if (!db) throw new Error("Firebase 尚未設定");
-  await setDoc(doc(db, `users/${userId}/foods/${food.id}`), { ...food, useCount: 0, updatedAt: serverTimestamp(), createdAt: serverTimestamp() }, { merge: true });
+  await setDoc(doc(db, `users/${userId}/foods/${food.id}`), { ...food, useCount: food.useCount ?? 0, updatedAt: serverTimestamp(), createdAt: serverTimestamp() }, { merge: true });
 }
 
 export async function removeSavedFood(userId: string, foodId: string): Promise<void> {

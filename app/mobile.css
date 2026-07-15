@@ -45,6 +45,10 @@
 .library-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
 .library-toolbar .search { margin: 0; }
 .library-toolbar button.active { background: var(--sage-dark); border-color: var(--sage-dark); color: #fff; }
+.daily-guidance { background: #fff; border: 1px solid var(--line); border-radius: 13px; margin: -4px 0 16px; padding: 11px 13px; }
+.daily-guidance summary { color: var(--sage-dark); cursor: pointer; font-size: 13px; font-weight: 700; }
+.daily-guidance summary small { background: var(--sage-pale); border-radius: 999px; font-size: 10px; margin-left: 5px; padding: 2px 6px; }
+.daily-guidance ul { color: var(--muted); font-size: 12px; line-height: 1.6; margin: 9px 0 0; padding-left: 18px; }
 
 @media (max-width: 760px) {
   .content { padding: 18px 16px 96px; }

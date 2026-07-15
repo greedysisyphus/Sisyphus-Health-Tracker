@@ -29,6 +29,7 @@ export type FoodEntry = Nutrition & {
   notes: string | null;
   source?: string;
   confidence?: string;
+  sourceFoodId?: string;
 };
 
 export type FoodRecordInput = Omit<FoodEntry, "id" | "date" | "time"> & { id?: string; time?: string };
@@ -82,6 +83,7 @@ export function normalizeFoodRecord(raw: Record<string, unknown>, id?: string): 
     notes: textOrNull(raw.notes),
     ...(typeof raw.source === "string" ? { source: raw.source } : {}),
     ...(typeof raw.confidence === "string" ? { confidence: raw.confidence } : {}),
+    ...(typeof raw.sourceFoodId === "string" ? { sourceFoodId: raw.sourceFoodId } : {}),
   };
 }
 
