@@ -208,8 +208,8 @@ h1 { letter-spacing: -1.7px; line-height: 1.12; }
   .table-wrap td:nth-child(2)::before { content: "熱量 "; }
   .table-wrap td:nth-child(3)::before { content: "蛋白質 "; }
   .table-wrap td:nth-child(4)::before { content: "碳水／脂肪 "; }
-  .table-wrap td:nth-child(5)::before { content: "水分 "; }
-  .table-wrap td:nth-child(6)::before { content: "體重 "; }
+  .table-wrap td:nth-child(5)::before { content: "纖維／鈉 "; }
+  .table-wrap td:nth-child(6)::before { content: "飲水 "; }
   .table-wrap td:last-child { grid-column: 2; grid-row: 1; align-self: center; }
   .table-wrap td:last-child .table-edit { padding: 7px 10px; }
 
