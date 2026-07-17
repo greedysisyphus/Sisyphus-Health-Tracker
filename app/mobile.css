@@ -152,6 +152,10 @@ h1 { letter-spacing: -1.7px; line-height: 1.12; }
 .targets-grid label:focus-within { border-color: var(--sage); box-shadow: 0 0 0 3px #ddecf080; }
 .targets-grid em { color: var(--muted); font-size: 11px; font-style: normal; white-space: nowrap; }
 .targets-card .save-btn { border-radius: 0; box-shadow: none; margin: 0; padding: 16px 24px; }
+.targets-grid .target-range-inputs { display: grid; gap: 4px; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto; }
+.targets-grid .target-range-inputs input { font-size: 19px !important; min-width: 0; }
+.targets-grid .target-range-inputs i { color: var(--muted); font-size: 11px; font-style: normal; }
+.targets-error { border-radius: 0; margin: 0; }
 
 @media (max-width: 760px) {
   .content { padding: 18px 16px 96px; }
@@ -226,6 +230,7 @@ h1 { letter-spacing: -1.7px; line-height: 1.12; }
   .targets-grid label { padding: 11px; }
   .targets-grid label small { min-height: 0; }
   .targets-grid input { font-size: 22px !important; }
+  .targets-grid .target-range-inputs input { font-size: 18px !important; }
   .targets-card .save-btn { padding: 16px; }
 
   .table-wrap { border: 0; border-radius: 0; overflow: visible; }
