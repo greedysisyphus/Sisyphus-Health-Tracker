@@ -96,7 +96,7 @@ export default function Home() {
     } catch { setNotice("快速加入飲品失敗，請再試一次。"); }
   };
   const updateWeight = async (value: string) => { const parsed = parseNonNegativeNumber(value); if (!user || parsed === null || parsed <= 0) return; await saveBodyLog(user.uid, { date, weightKg: parsed }); setWeightKg(parsed); };
-  const saveFood = async (food: SavedFoodInput) => { if (!user) return; try { await saveSavedFood(user.uid, food); await loadLibrary(); setFoodEditor(undefined); setNotice(`已儲存「${food.name}」。`); } catch { setNotice("儲存常用食物失敗，請再試一次。"); } };
+  const saveFood = async (food: SavedFoodInput) => { if (!user) return; try { const result = await saveSavedFood(user.uid, food); await loadLibrary(); setFoodEditor(undefined); setNotice(result.mergedDuplicate ? `「${food.name}」已有相同品牌的常用食物，已更新既有資料。` : `已儲存「${food.name}」。`); } catch { setNotice("儲存常用食物失敗，請再試一次。"); } };
   const applySuggestedHydration = async (food: SavedFoodSummary, hydrationMlPerServing: number) => {
     await saveFood({ ...food, hydrationMlPerServing });
     setNotice(`已為「${food.name}」設定每份水分 ${hydrationMlPerServing} ml。`);

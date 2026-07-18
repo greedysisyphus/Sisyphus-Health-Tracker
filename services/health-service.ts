@@ -96,9 +96,21 @@ export async function listFoods(userId: string): Promise<SavedFoodSummary[]> {
   }).sort((left, right) => right.useCount - left.useCount || left.name.localeCompare(right.name, "zh-Hant"));
 }
 
-export async function saveSavedFood(userId: string, food: SavedFoodInput): Promise<void> {
+const comparableFoodText = (value: string | null) => value?.trim().replace(/\s+/g, " ").toLocaleLowerCase("zh-TW") ?? "";
+
+export async function saveSavedFood(userId: string, food: SavedFoodInput): Promise<{ id: string; mergedDuplicate: boolean }> {
   if (!db) throw new Error("Firebase 尚未設定");
-  await setDoc(doc(db, `users/${userId}/foods/${food.id}`), { ...food, useCount: food.useCount ?? 0, updatedAt: serverTimestamp(), createdAt: serverTimestamp() }, { merge: true });
+  const existing = (await listFoods(userId)).find(item => item.id !== food.id && comparableFoodText(item.name) === comparableFoodText(food.name) && comparableFoodText(item.brand) === comparableFoodText(food.brand));
+  const id = existing?.id ?? food.id;
+  await setDoc(doc(db, `users/${userId}/foods/${id}`), {
+    ...food,
+    id,
+    useCount: Math.max(food.useCount ?? 0, existing?.useCount ?? 0),
+    updatedAt: serverTimestamp(),
+    ...(existing ? {} : { createdAt: serverTimestamp() }),
+  }, { merge: true });
+  if (existing) await deleteDoc(doc(db, `users/${userId}/foods/${food.id}`));
+  return { id, mergedDuplicate: Boolean(existing) };
 }
 
 export async function removeSavedFood(userId: string, foodId: string): Promise<void> {
