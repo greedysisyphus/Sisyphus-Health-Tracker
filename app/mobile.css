@@ -48,6 +48,9 @@ h1 { letter-spacing: -1.7px; line-height: 1.12; }
 .food-icon { background: #f3f1e8; border-radius: 50%; color: #9a7640; }
 .entry-actions button { border-color: #e4ebea; border-radius: 999px; }
 .entry-actions button:last-child { background: #fff8f5; border-color: #f2e5df; }
+.entry-source { display: inline-flex; align-items: center; background: #eef4f4; border-radius: 999px; color: #58747b; font-size: 10px; line-height: 1.2; margin-top: 7px; padding: 3px 7px; }
+.entry-source.source-ai_estimated, .entry-source.source-manual_estimated { background: #fff5e8; color: #98703a; }
+.entry-source.source-restaurant_official, .entry-source.source-nutrition_label { background: #edf5ef; color: #4f795b; }
 .trend-card, .weekly-goals, .weekly-trends, .targets-card, .food-library { border-color: #e3e9e8; box-shadow: 0 7px 20px #263c4208; }
 .trend-card, .weekly-goals, .weekly-trends, .targets-card { border-radius: 22px; }
 .food-library { border-radius: 20px; overflow: hidden; }
@@ -203,6 +206,7 @@ h1 { letter-spacing: -1.7px; line-height: 1.12; }
   .entry { position: relative; display: grid; grid-template-columns: 38px minmax(0, 1fr); align-items: start; gap: 10px; padding: 15px 0 54px; }
   .entry > div:nth-child(2) { min-width: 0; }
   .entry > div:nth-child(2) b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .entry-source { margin-top: 5px; }
   .entry-nutrition { position: absolute; left: 48px; bottom: 14px; margin: 0; text-align: left; }
   .entry-nutrition span { display: block; margin-top: 2px; }
   .entry-actions { position: absolute; right: 0; bottom: 12px; margin: 0; gap: 4px; }
