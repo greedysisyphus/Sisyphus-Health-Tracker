@@ -54,9 +54,13 @@ h1 { letter-spacing: -1.7px; line-height: 1.12; }
 .trend-card, .weekly-goals, .weekly-trends, .targets-card, .food-library { border-color: #e3e9e8; box-shadow: 0 7px 20px #263c4208; }
 .trend-card, .weekly-goals, .weekly-trends, .targets-card { border-radius: 22px; }
 .food-library { border-radius: 20px; overflow: hidden; }
-.food-library article { padding: 18px; }
-.food-actions { align-items: center; display: flex; gap: 6px; margin-left: auto; }
-.food-library .food-actions .add-today { background: var(--sage-dark); border-color: var(--sage-dark); color: #fff; }
+.food-library article { align-items: center; display: grid; gap: 14px; grid-template-columns: 38px minmax(0, 1fr) auto auto; padding: 17px 18px; }
+.food-library article > div:nth-child(2) { min-width: 0; }
+.food-library article > span { margin-left: 0; }
+.food-actions { align-items: center; display: flex; gap: 6px; margin-left: 0; }
+.food-library .food-actions button { background: #fff; border: 1px solid var(--line); border-radius: 8px; color: var(--sage-dark); cursor: pointer; font-size: 12px; line-height: 1; padding: 8px 9px; white-space: nowrap; }
+.food-library .food-actions .add-today { background: var(--sage-dark); border-color: var(--sage-dark); color: #fff; font-weight: 700; }
+.food-library .food-actions button:last-child { border-color: transparent; color: #b06f53; font-size: 16px; padding-inline: 5px; }
 .meal-choices { display: grid; gap: 9px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 18px; }
 .meal-choices .parse-btn { margin: 0; min-height: 46px; }
 .weekly-goals, .weekly-trends { background: #fff; }
@@ -118,6 +122,7 @@ h1 { letter-spacing: -1.7px; line-height: 1.12; }
 .duplicate-list span { color: var(--muted); font-size: 11px; text-align: right; }
 .library-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
 .library-toolbar .search { margin: 0; }
+.library-toolbar button { min-width: 64px; white-space: nowrap; }
 .library-toolbar button.active { background: var(--sage-dark); border-color: var(--sage-dark); color: #fff; }
 .daily-guidance { background: #fff; border: 1px solid var(--line); border-radius: 13px; margin: -4px 0 16px; padding: 11px 13px; }
 .daily-guidance summary { color: var(--sage-dark); cursor: pointer; font-size: 13px; font-weight: 700; }
@@ -237,12 +242,11 @@ h1 { letter-spacing: -1.7px; line-height: 1.12; }
   .bottom-nav .nav-mark { margin: 0 auto; }
   .bottom-nav button.active { font-weight: 700; }
 
-  .food-library article { padding: 14px 12px; gap: 10px; }
+  .food-library article { display: grid; gap: 10px; grid-template-columns: 38px minmax(0, 1fr) auto; padding: 14px 12px; }
   .food-library article > div:nth-child(2) { min-width: 0; flex: 1; }
   .food-library article b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .food-library button { padding: 8px; }
-  .food-library .food-actions { gap: 4px; }
-  .food-library .food-actions button { min-height: 34px; padding: 7px; white-space: nowrap; }
+  .food-library .food-actions { grid-column: 2 / 4; grid-row: 2; justify-content: flex-end; }
+  .food-library .food-actions button { min-height: 32px; padding: 7px 8px; }
   .food-library .food-actions .add-today { font-size: 11px; }
   .library-toolbar button { flex: 0 0 auto; min-height: 42px; }
   .weekly-summary > div { gap: 13px; }
