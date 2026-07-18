@@ -98,10 +98,18 @@ export async function listFoods(userId: string): Promise<SavedFoodSummary[]> {
 
 // Product names are often entered with inconsistent spaces (for example 「光泉 無加糖黑豆漿」).
 const comparableFoodText = (value: string | null) => value?.replace(/\s+/g, "").toLocaleLowerCase("zh-TW") ?? "";
+const compatibleFoodBrand = (left: string | null, right: string | null) => {
+  const leftBrand = comparableFoodText(left);
+  const rightBrand = comparableFoodText(right);
+  return leftBrand === rightBrand || !leftBrand || !rightBrand;
+};
 
 export async function saveSavedFood(userId: string, food: SavedFoodInput): Promise<{ id: string; mergedDuplicate: boolean }> {
   if (!db) throw new Error("Firebase 尚未設定");
-  const existing = (await listFoods(userId)).find(item => item.id !== food.id && comparableFoodText(item.name) === comparableFoodText(food.name) && comparableFoodText(item.brand) === comparableFoodText(food.brand));
+  const sameName = (await listFoods(userId)).filter(item => item.id !== food.id && comparableFoodText(item.name) === comparableFoodText(food.name));
+  const exactBrand = sameName.find(item => comparableFoodText(item.brand) === comparableFoodText(food.brand));
+  const compatible = sameName.filter(item => compatibleFoodBrand(item.brand, food.brand));
+  const existing = exactBrand ?? (compatible.length === 1 ? compatible[0] : undefined);
   const id = existing?.id ?? food.id;
   await setDoc(doc(db, `users/${userId}/foods/${id}`), {
     ...food,
@@ -134,8 +142,13 @@ export async function mergeSavedFoodDuplicates(userId: string, foodIds: string[]
       return { name: comparableFoodText(String(data.name ?? "")), brand: comparableFoodText(typeof data.brand === "string" ? data.brand : null) };
     });
     const [firstIdentity] = identity;
-    if (!firstIdentity || identity.some(item => item.name !== firstIdentity.name || item.brand !== firstIdentity.brand)) throw new Error("只能合併相同名稱與品牌的常用食物");
+    const knownBrands = new Set(identity.map(item => item.brand).filter(Boolean));
+    if (!firstIdentity || identity.some(item => item.name !== firstIdentity.name) || knownBrands.size > 1) throw new Error("只能合併相同名稱，且品牌不衝突的常用食物");
     const keep = snapshots.reduce((current, candidate) => {
+      const currentBrand = comparableFoodText(typeof current.data()?.brand === "string" ? current.data()?.brand : null);
+      const candidateBrand = comparableFoodText(typeof candidate.data()?.brand === "string" ? candidate.data()?.brand : null);
+      if (candidateBrand && !currentBrand) return candidate;
+      if (currentBrand && !candidateBrand) return current;
       const currentCount = hydration(current.data()?.useCount);
       const candidateCount = hydration(candidate.data()?.useCount);
       return candidateCount > currentCount || candidateCount === currentCount && candidate.id.localeCompare(current.id) < 0 ? candidate : current;
