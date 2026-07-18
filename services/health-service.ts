@@ -117,3 +117,30 @@ export async function removeSavedFood(userId: string, foodId: string): Promise<v
   if (!db) throw new Error("Firebase 尚未設定");
   await deleteDoc(doc(db, `users/${userId}/foods/${foodId}`));
 }
+
+/** Merges a user-confirmed group of same-name, same-brand saved foods. */
+export async function mergeSavedFoodDuplicates(userId: string, foodIds: string[]): Promise<{ keptFoodId: string; removedCount: number; name: string }> {
+  const firebaseDb = db;
+  if (!firebaseDb) throw new Error("Firebase 尚未設定");
+  const uniqueIds = [...new Set(foodIds)];
+  if (uniqueIds.length < 2) throw new Error("至少需要兩項常用食物才能合併");
+  const references = uniqueIds.map(id => doc(firebaseDb, `users/${userId}/foods/${id}`));
+  return runTransaction(firebaseDb, async transaction => {
+    const snapshots = await Promise.all(references.map(reference => transaction.get(reference)));
+    if (snapshots.some(snapshot => !snapshot.exists())) throw new Error("找不到要合併的常用食物");
+    const identity = snapshots.map(snapshot => {
+      const data = snapshot.data() ?? {};
+      return { name: comparableFoodText(String(data.name ?? "")), brand: comparableFoodText(typeof data.brand === "string" ? data.brand : null) };
+    });
+    const [firstIdentity] = identity;
+    if (!firstIdentity || identity.some(item => item.name !== firstIdentity.name || item.brand !== firstIdentity.brand)) throw new Error("只能合併相同名稱與品牌的常用食物");
+    const keep = snapshots.reduce((current, candidate) => {
+      const currentCount = hydration(current.data()?.useCount);
+      const candidateCount = hydration(candidate.data()?.useCount);
+      return candidateCount > currentCount || candidateCount === currentCount && candidate.id.localeCompare(current.id) < 0 ? candidate : current;
+    });
+    transaction.set(keep.ref, { favorite: snapshots.some(snapshot => Boolean(snapshot.data()?.favorite)), updatedAt: serverTimestamp() }, { merge: true });
+    snapshots.filter(snapshot => snapshot.id !== keep.id).forEach(snapshot => transaction.delete(snapshot.ref));
+    return { keptFoodId: keep.id, removedCount: snapshots.length - 1, name: String(keep.data()?.name ?? "常用食物") };
+  });
+}

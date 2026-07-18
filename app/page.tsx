@@ -4,7 +4,7 @@ import { onAuthStateChanged, signInWithPopup, signOut, type User } from "firebas
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { auth, googleProvider, hasFirebaseConfig } from "../lib/firebase";
 import { calculateDailyNutrition, calculateHydrationSummary, calculateSevenDayAverage, emptyNutrition, foodCategories, formatLocalDate, formatNutrition, meals, parseNonNegativeNumber, totalForEntry, type FoodEntry, type MealType, type Nutrition } from "../lib/nutrition";
-import { getBodyLog, getDailyLog, getUserProfile, listDailyEntries, listDailyOverviews, listFoods, removeEntry, removeSavedFood, saveBodyLog, saveEntry, saveHealthTargets, saveSavedFood, saveWater, type DailyOverview, type SavedFoodInput, type SavedFoodSummary } from "../services/health-service";
+import { getBodyLog, getDailyLog, getUserProfile, listDailyEntries, listDailyOverviews, listFoods, mergeSavedFoodDuplicates, removeEntry, removeSavedFood, saveBodyLog, saveEntry, saveHealthTargets, saveSavedFood, saveWater, type DailyOverview, type SavedFoodInput, type SavedFoodSummary } from "../services/health-service";
 
 type View = "daily" | "overview" | "trends" | "foods" | "settings";
 type EditorState = FoodEntry | null | undefined;
@@ -102,6 +102,14 @@ export default function Home() {
     setNotice(`已為「${food.name}」設定每份水分 ${hydrationMlPerServing} ml。`);
   };
   const deleteFood = async (id: string) => { if (user && confirm("確定刪除這項常用食物？")) { await removeSavedFood(user.uid, id); await loadLibrary(); } };
+  const mergeDuplicateFoods = async (foodIds: string[]) => {
+    if (!user) return;
+    try {
+      const result = await mergeSavedFoodDuplicates(user.uid, foodIds);
+      await loadLibrary();
+      setNotice(`已合併「${result.name}」，移除 ${result.removedCount} 筆重複常用食物。`);
+    } catch { setNotice("合併重複常用食物失敗，請重新整理後再試一次。"); }
+  };
   const saveAsCommon = async (entry: FoodEntry) => { await saveFood({ id: crypto.randomUUID(), name: entry.name, brand: entry.brand, category: entry.category, servingWeightG: entry.servingWeightG, hydrationMlPerServing: entry.servings > 0 ? entry.hydrationMl / entry.servings : 0, nutrition: { ...entryNutrition(entry) }, favorite: true, notes: entry.notes }); };
   const exportRecords = async (startDate: string, endDate: string) => {
     if (!user) return;
@@ -147,7 +155,7 @@ export default function Home() {
       {view === "daily" && <DailyView date={date} setDate={setDate} totals={totals} entries={entries} waterMl={waterMl} weightKg={weightKg} loading={loading} lastSyncedAt={lastSyncedAt} notice={notice} savedFoods={savedFoods} setEntryEditor={setEntryEditor} deleteEntry={deleteEntry} saveAsCommon={saveAsCommon} addWater={addWater} quickAddDrink={quickAddDrink} updateWeight={updateWeight} refresh={refreshDaily} exportData={openExport} />}
       {view === "overview" && <Overview history={history} openDate={next => { setDate(next); setView("daily"); }} exportData={openExport} />}
       {view === "trends" && <Trends history={history} />}
-      {view === "foods" && <FoodLibrary foods={savedFoods} add={() => setFoodEditor(null)} edit={setFoodEditor} remove={deleteFood} applySuggestedHydration={applySuggestedHydration} />}
+      {view === "foods" && <FoodLibrary foods={savedFoods} add={() => setFoodEditor(null)} edit={setFoodEditor} remove={deleteFood} mergeDuplicates={mergeDuplicateFoods} applySuggestedHydration={applySuggestedHydration} />}
       {view === "settings" && <TargetsSettings initial={targetState} save={async next => { if (!user) return; await saveHealthTargets(user.uid, { calorieTargetMin: next.caloriesKcal.min, calorieTargetMax: next.caloriesKcal.max, proteinTargetMin: next.proteinG.min, proteinTargetMax: next.proteinG.max, carbTargetMin: next.carbsG.min, carbTargetMax: next.carbsG.max, fatTargetMin: next.fatG.min, fatTargetMax: next.fatG.max, waterTargetMinMl: next.waterMl.min, waterTargetMaxMl: next.waterMl.max, fiberTarget: next.fiberG, sodiumLimit: next.sodiumMg }); setTargets(next); setNotice("已更新每日目標。"); }} />}
     </section>
     {entryEditor !== undefined && <EntryEditor initial={entryEditor} savedFoods={savedFoods} close={() => setEntryEditor(undefined)} save={saveDailyEntry} />}
@@ -304,16 +312,29 @@ const hydrationSuggestionFor = (food: SavedFoodSummary): number | null => {
   if (text.includes("美式") || text.includes("americano")) return 350;
   return null;
 };
-function FoodLibrary({ foods, add, edit, remove, applySuggestedHydration }: { foods: SavedFoodSummary[]; add: () => void; edit: (food: SavedFoodInput) => void; remove: (id: string) => Promise<void>; applySuggestedHydration: (food: SavedFoodSummary, hydrationMl: number) => Promise<void> }) {
+type DuplicateFoodGroup = { key: string; foods: SavedFoodSummary[] };
+const foodIdentity = (food: Pick<SavedFoodSummary, "name" | "brand">) => `${food.name.trim().replace(/\s+/g, " ").toLocaleLowerCase("zh-TW")}\u0000${(food.brand ?? "").trim().replace(/\s+/g, " ").toLocaleLowerCase("zh-TW")}`;
+const duplicateFoodGroups = (foods: SavedFoodSummary[]): DuplicateFoodGroup[] => {
+  const grouped = new Map<string, SavedFoodSummary[]>();
+  foods.forEach(food => grouped.set(foodIdentity(food), [...(grouped.get(foodIdentity(food)) ?? []), food]));
+  return [...grouped.entries()].filter(([, items]) => items.length > 1).map(([key, foods]) => ({ key, foods }));
+};
+function FoodLibrary({ foods, add, edit, remove, mergeDuplicates, applySuggestedHydration }: { foods: SavedFoodSummary[]; add: () => void; edit: (food: SavedFoodInput) => void; remove: (id: string) => Promise<void>; mergeDuplicates: (foodIds: string[]) => Promise<void>; applySuggestedHydration: (food: SavedFoodSummary, hydrationMl: number) => Promise<void> }) {
   const [query, setQuery] = useState("");
   const [showDrinksOnly, setShowDrinksOnly] = useState(false);
+  const [groupToMerge, setGroupToMerge] = useState<DuplicateFoodGroup | null>(null);
+  const [merging, setMerging] = useState(false);
   const visible = foods.filter(food => `${food.name} ${food.brand ?? ""} ${food.category ?? ""}`.toLowerCase().includes(query.toLowerCase())).filter(food => !showDrinksOnly || food.category === "飲料" || hydrationSuggestionFor(food) !== null || food.hydrationMlPerServing > 0);
   const missingHydration = foods.filter(food => food.hydrationMlPerServing === 0 && hydrationSuggestionFor(food) !== null);
+  const duplicates = useMemo(() => duplicateFoodGroups(foods), [foods]);
+  const merge = async () => { if (!groupToMerge) return; setMerging(true); try { await mergeDuplicates(groupToMerge.foods.map(food => food.id)); setGroupToMerge(null); } finally { setMerging(false); } };
   return <>
     <header><div><p className="eyebrow">MY FOODS</p><h1>常用食物，慢慢累積。</h1><p className="muted">可新增、修改、刪除，並在新增紀錄時套用。</p></div><button className="primary" onClick={add}>＋ 新增食物</button></header>
     {missingHydration.length > 0 && <section className="hydration-reminder"><b>有 {missingHydration.length} 項常用飲品尚未設定水分</b><p>套用後，手動與 Hermes 登記都會自動計入每日水分。</p><div>{missingHydration.map(food => { const suggestion = hydrationSuggestionFor(food); return suggestion === null ? null : <button key={food.id} onClick={() => void applySuggestedHydration(food, suggestion)}>設定「{food.name}」為 {suggestion} ml</button>; })}</div></section>}
+    {duplicates.length > 0 && <section className="duplicate-reminder"><b>發現 {duplicates.reduce((total, group) => total + group.foods.length - 1, 0)} 筆重複常用食物</b><p>合併時會保留使用次數最高的一筆，其他重複常用食物才會刪除；每日飲食紀錄不受影響。</p><div>{duplicates.map(group => { const lead = [...group.foods].sort((left, right) => right.useCount - left.useCount)[0]; return <button key={group.key} onClick={() => setGroupToMerge(group)}>合併「{lead.name}」{lead.brand ? `（${lead.brand}）` : ""}共 {group.foods.length} 筆</button>; })}</div></section>}
     <div className="library-toolbar"><input className="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="搜尋名稱、品牌或分類" /><button className={showDrinksOnly ? "active" : ""} onClick={() => setShowDrinksOnly(!showDrinksOnly)}>飲品</button></div>
     <section className="food-library">{visible.length ? visible.map(food => <article key={food.id}><div className="food-icon"><FoodMark /></div><div><b>{food.name}</b><p>{food.brand ? `${food.brand} · ` : ""}{food.category ?? "未分類"} · P {formatNutrition(food.nutrition.proteinG, "g")}{food.hydrationMlPerServing > 0 ? ` · 水分 ${Math.round(food.hydrationMlPerServing)} ml` : ""}</p></div><span>{formatNutrition(food.nutrition.caloriesKcal, "kcal")}</span><button onClick={() => edit(food)}>編輯</button><button aria-label={`刪除 ${food.name}`} onClick={() => void remove(food.id)}>×</button></article>) : <p className="empty">尚無符合的常用食物。</p>}</section>
+    {groupToMerge && <Sheet title="合併重複常用食物" close={() => !merging && setGroupToMerge(null)}><p className="muted">以下 {groupToMerge.foods.length} 筆名稱與品牌相同。確認後會保留使用次數最高的一筆，並刪除其餘常用食物。</p><ul className="duplicate-list">{groupToMerge.foods.map(food => <li key={food.id}><b>{food.name}</b><span>使用 {food.useCount} 次 · {formatNutrition(food.nutrition.caloriesKcal, "kcal")}</span></li>)}</ul><button className="save-btn" onClick={() => void merge()} disabled={merging}>{merging ? "合併中…" : `確認合併 ${groupToMerge.foods.length} 筆食物`}</button></Sheet>}
   </>;
 }
 
