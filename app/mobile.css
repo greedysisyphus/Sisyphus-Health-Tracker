@@ -113,6 +113,11 @@ h1 { letter-spacing: -1.7px; line-height: 1.12; }
 .weekly-summary > div { grid-template-columns: repeat(3, 1fr) !important; gap: 18px; padding-bottom: 0 !important; }
 .weekly-goals { background: #fff; border: 1px solid var(--line); border-radius: 17px; margin: 18px 0; padding: 20px; }
 .weekly-goals h2 { font-family: Georgia, "Noto Serif TC", serif; font-size: 21px; margin: 0 0 15px; }
+.weekly-goals-empty p { color: var(--muted); font-size: 13px; line-height: 1.6; margin: 0; }
+.today-so-far { align-items: center; background: #edf6f7; border: 1px solid #d8e8ea; border-radius: 17px; display: flex; gap: 14px; justify-content: space-between; margin: 0 0 18px; padding: 15px 18px; }
+.today-so-far b { color: var(--sage-dark); display: block; font-size: 14px; }
+.today-so-far span { color: var(--muted); display: block; font-size: 11px; margin-top: 4px; }
+.today-so-far p { color: var(--ink); font-size: 12px; line-height: 1.6; margin: 0; text-align: right; }
 .weekly-goals > div { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
 .weekly-goals article { min-width: 0; }
 .weekly-goals article > div:first-child { display: flex; align-items: baseline; gap: 5px; justify-content: space-between; }
@@ -228,6 +233,8 @@ h1 { letter-spacing: -1.7px; line-height: 1.12; }
   .weekly-summary h2 { font-size: 18px; }
   .weekly-goals { padding: 16px; }
   .weekly-goals > div { grid-template-columns: 1fr; gap: 12px; }
+  .today-so-far { align-items: flex-start; display: block; padding: 14px 16px; }
+  .today-so-far p { margin-top: 10px; text-align: left; }
   .weekly-trends { padding: 16px; }
   .weekly-trends-grid { grid-template-columns: 1fr; gap: 10px; }
   .trend-sparkline { padding: 13px 12px 10px; }
