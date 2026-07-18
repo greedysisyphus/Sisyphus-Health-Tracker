@@ -96,7 +96,8 @@ export async function listFoods(userId: string): Promise<SavedFoodSummary[]> {
   }).sort((left, right) => right.useCount - left.useCount || left.name.localeCompare(right.name, "zh-Hant"));
 }
 
-const comparableFoodText = (value: string | null) => value?.trim().replace(/\s+/g, " ").toLocaleLowerCase("zh-TW") ?? "";
+// Product names are often entered with inconsistent spaces (for example 「光泉 無加糖黑豆漿」).
+const comparableFoodText = (value: string | null) => value?.replace(/\s+/g, "").toLocaleLowerCase("zh-TW") ?? "";
 
 export async function saveSavedFood(userId: string, food: SavedFoodInput): Promise<{ id: string; mergedDuplicate: boolean }> {
   if (!db) throw new Error("Firebase 尚未設定");

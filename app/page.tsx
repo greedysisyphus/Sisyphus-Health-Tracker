@@ -313,7 +313,7 @@ const hydrationSuggestionFor = (food: SavedFoodSummary): number | null => {
   return null;
 };
 type DuplicateFoodGroup = { key: string; foods: SavedFoodSummary[] };
-const foodIdentity = (food: Pick<SavedFoodSummary, "name" | "brand">) => `${food.name.trim().replace(/\s+/g, " ").toLocaleLowerCase("zh-TW")}\u0000${(food.brand ?? "").trim().replace(/\s+/g, " ").toLocaleLowerCase("zh-TW")}`;
+const foodIdentity = (food: Pick<SavedFoodSummary, "name" | "brand">) => `${food.name.replace(/\s+/g, "").toLocaleLowerCase("zh-TW")}\u0000${(food.brand ?? "").replace(/\s+/g, "").toLocaleLowerCase("zh-TW")}`;
 const duplicateFoodGroups = (foods: SavedFoodSummary[]): DuplicateFoodGroup[] => {
   const grouped = new Map<string, SavedFoodSummary[]>();
   foods.forEach(food => grouped.set(foodIdentity(food), [...(grouped.get(foodIdentity(food)) ?? []), food]));
