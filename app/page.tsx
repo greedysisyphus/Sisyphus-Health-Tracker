@@ -1,7 +1,7 @@
 "use client";
 
 import { onAuthStateChanged, signInWithPopup, signOut, type User } from "firebase/auth";
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { auth, googleProvider, hasFirebaseConfig } from "../lib/firebase";
 import { calculateDailyNutrition, calculateHydrationSummary, calculateSevenDayAverage, emptyNutrition, foodCategories, formatLocalDate, formatNutrition, meals, parseNonNegativeNumber, totalForEntry, type FoodEntry, type MealType, type Nutrition } from "../lib/nutrition";
 import { getBodyLog, getDailyLog, getUserProfile, listDailyEntries, listDailyOverviews, listFoods, removeEntry, removeSavedFood, saveBodyLog, saveEntry, saveHealthTargets, saveSavedFood, saveWater, type DailyOverview, type SavedFoodInput, type SavedFoodSummary } from "../services/health-service";
@@ -38,6 +38,8 @@ export default function Home() {
   const [analysisTexts, setAnalysisTexts] = useState<AnalysisTexts>({});
   const [analysisPreparing, setAnalysisPreparing] = useState(false);
   const [targetState, setTargets] = useState<HealthTargets>(defaultTargets);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+  const dailyLoadId = useRef(0);
   const totals = useMemo(() => calculateDailyNutrition(entries), [entries]);
 
   useEffect(() => {
@@ -45,18 +47,31 @@ export default function Home() {
     return onAuthStateChanged(auth, current => { setUser(current); setLoading(false); });
   }, []);
 
-  const loadDaily = useCallback(async () => {
-    if (!user) return;
+  const loadDaily = useCallback(async (): Promise<boolean> => {
+    if (!user) return false;
+    const loadId = dailyLoadId.current + 1;
+    dailyLoadId.current = loadId;
     setLoading(true);
     try {
       const [nextEntries, daily, body] = await Promise.all([listDailyEntries(user.uid, date), getDailyLog(user.uid, date), getBodyLog(user.uid, date)]);
-      setEntries(nextEntries); setWaterMl(daily?.waterMl ?? 0); setWeightKg(body?.weightKg);
-    } catch { setNotice("讀取資料失敗，請確認 Firebase 設定與登入狀態。"); }
-    finally { setLoading(false); }
+      if (dailyLoadId.current !== loadId) return false;
+      setEntries(nextEntries); setWaterMl(daily?.waterMl ?? 0); setWeightKg(body?.weightKg); setLastSyncedAt(new Date().toISOString());
+      return true;
+    } catch {
+      if (dailyLoadId.current === loadId) setNotice("讀取資料失敗，請確認 Firebase 設定與登入狀態。");
+      return false;
+    } finally { if (dailyLoadId.current === loadId) setLoading(false); }
   }, [date, user]);
 
   const loadLibrary = useCallback(async () => { if (user) setSavedFoods(await listFoods(user.uid)); }, [user]);
   useEffect(() => { const timer = window.setTimeout(() => { void loadDaily(); }, 0); return () => window.clearTimeout(timer); }, [loadDaily]);
+  useEffect(() => {
+    if (!user || view !== "daily") return;
+    const refreshWhenVisible = () => { if (document.visibilityState === "visible") void loadDaily(); };
+    window.addEventListener("focus", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => { window.removeEventListener("focus", refreshWhenVisible); document.removeEventListener("visibilitychange", refreshWhenVisible); };
+  }, [loadDaily, user, view]);
   useEffect(() => { const timer = window.setTimeout(() => { void loadLibrary().catch(() => setNotice("讀取常用食物失敗。")); }, 0); return () => window.clearTimeout(timer); }, [loadLibrary]);
   useEffect(() => { if (!user) return; void getUserProfile(user.uid).then(profile => { if (!profile) return; setTargets(current => ({ ...current, caloriesKcal: { min: profileNumber(profile, "calorieTargetMin", current.caloriesKcal.min), max: profileNumber(profile, "calorieTargetMax", current.caloriesKcal.max) }, proteinG: { min: profileNumber(profile, "proteinTargetMin", current.proteinG.min), max: profileNumber(profile, "proteinTargetMax", current.proteinG.max) }, carbsG: { min: profileNumber(profile, "carbTargetMin", current.carbsG.min), max: profileNumber(profile, "carbTargetMax", current.carbsG.max) }, fatG: { min: profileNumber(profile, "fatTargetMin", current.fatG.min), max: profileNumber(profile, "fatTargetMax", current.fatG.max) }, waterMl: { min: profileNumber(profile, "waterTargetMinMl", current.waterMl.min), max: profileNumber(profile, "waterTargetMaxMl", current.waterMl.max) }, fiberG: profileNumber(profile, "fiberTarget", current.fiberG), sodiumMg: profileNumber(profile, "sodiumLimit", current.sodiumMg) })); }).catch(() => setNotice("讀取個人目標失敗。")); }, [user]);
   useEffect(() => { if (view === "daily") return; const timer = window.setTimeout(() => { void listDailyOverviews(user?.uid ?? "").then(setHistory).catch(() => setNotice("讀取彙整資料失敗。")); }, 0); return () => window.clearTimeout(timer); }, [user?.uid, view]);
@@ -119,6 +134,7 @@ export default function Home() {
     setNotice(copied ? "已複製資料與 ChatGPT 分析指令。" : "無法自動複製，請確認 Safari 允許網站使用剪貼簿後再試一次。");
     return copied;
   };
+  const refreshDaily = async () => { if (await loadDaily()) setNotice("已更新當日紀錄。"); };
 
   if (!hasFirebaseConfig) return <SetupScreen />;
   if (loading && !user) return <main className="setup"><p className="eyebrow">日常營養</p><h1>正在確認登入狀態…</h1></main>;
@@ -128,7 +144,7 @@ export default function Home() {
     <aside className="sidebar"><div className="brand"><i>n</i><span>日常營養</span></div><p className="side-date">飲食、體重與喝水，都會安全地儲存在你的帳號。</p><Nav view={view} setView={setView} /><div className="profile"><div>{(user.displayName ?? user.email ?? "你").slice(0, 1)}</div><span>{user.displayName ?? "我的帳號"}<small>{user.email}</small></span><button className="text-button" onClick={() => void signOut(auth!)}>登出</button></div></aside>
     <section className="content">
       <div className="mobile-topbar"><div className="brand"><i>n</i><span>日常營養</span></div><button className="text-button" onClick={() => void signOut(auth!)}>登出</button></div>
-      {view === "daily" && <DailyView date={date} setDate={setDate} totals={totals} entries={entries} waterMl={waterMl} weightKg={weightKg} loading={loading} notice={notice} savedFoods={savedFoods} setEntryEditor={setEntryEditor} deleteEntry={deleteEntry} saveAsCommon={saveAsCommon} addWater={addWater} quickAddDrink={quickAddDrink} updateWeight={updateWeight} exportData={openExport} />}
+      {view === "daily" && <DailyView date={date} setDate={setDate} totals={totals} entries={entries} waterMl={waterMl} weightKg={weightKg} loading={loading} lastSyncedAt={lastSyncedAt} notice={notice} savedFoods={savedFoods} setEntryEditor={setEntryEditor} deleteEntry={deleteEntry} saveAsCommon={saveAsCommon} addWater={addWater} quickAddDrink={quickAddDrink} updateWeight={updateWeight} refresh={refreshDaily} exportData={openExport} />}
       {view === "overview" && <Overview history={history} openDate={next => { setDate(next); setView("daily"); }} exportData={openExport} />}
       {view === "trends" && <Trends history={history} />}
       {view === "foods" && <FoodLibrary foods={savedFoods} add={() => setFoodEditor(null)} edit={setFoodEditor} remove={deleteFood} applySuggestedHydration={applySuggestedHydration} />}
@@ -172,7 +188,7 @@ async function copyPlainText(text: string): Promise<boolean> {
   return copied;
 }
 
-function DailyView({ date, setDate, totals, entries, waterMl, weightKg, loading, notice, savedFoods, setEntryEditor, deleteEntry, saveAsCommon, addWater, quickAddDrink, updateWeight, exportData }: { date: string; setDate: (value: string) => void; totals: Nutrition; entries: FoodEntry[]; waterMl: number; weightKg?: number; loading: boolean; notice: string; savedFoods: SavedFoodSummary[]; setEntryEditor: (entry: EditorState) => void; deleteEntry: (id: string) => Promise<void>; saveAsCommon: (entry: FoodEntry) => Promise<void>; addWater: (amount: number) => Promise<void>; quickAddDrink: (food: SavedFoodSummary) => Promise<void>; updateWeight: (value: string) => Promise<void>; exportData: () => void }) {
+function DailyView({ date, setDate, totals, entries, waterMl, weightKg, loading, lastSyncedAt, notice, savedFoods, setEntryEditor, deleteEntry, saveAsCommon, addWater, quickAddDrink, updateWeight, refresh, exportData }: { date: string; setDate: (value: string) => void; totals: Nutrition; entries: FoodEntry[]; waterMl: number; weightKg?: number; loading: boolean; lastSyncedAt: string | null; notice: string; savedFoods: SavedFoodSummary[]; setEntryEditor: (entry: EditorState) => void; deleteEntry: (id: string) => Promise<void>; saveAsCommon: (entry: FoodEntry) => Promise<void>; addWater: (amount: number) => Promise<void>; quickAddDrink: (food: SavedFoodSummary) => Promise<void>; updateWeight: (value: string) => Promise<void>; refresh: () => Promise<void>; exportData: () => void }) {
   const targets = useContext(TargetsContext);
   const previous = () => setDate(formatLocalDate(new Date(new Date(`${date}T12:00:00`).getTime() - 86400000)));
   const next = () => setDate(formatLocalDate(new Date(new Date(`${date}T12:00:00`).getTime() + 86400000)));
@@ -182,7 +198,7 @@ function DailyView({ date, setDate, totals, entries, waterMl, weightKg, loading,
   const calorieStatus = rangeStatus(totals.caloriesKcal, targets.caloriesKcal, "kcal");
   return <>
     <div className="date-bar"><button onClick={previous}><b>‹ 前一天</b></button><label>指定日期<input type="date" value={date} onChange={event => setDate(event.target.value)} /></label><button onClick={next}><b>後一天 ›</b></button></div>
-    <header><div><p className="eyebrow">DAILY LOG</p><h1>{date === formatLocalDate(new Date()) ? "今天，好好吃飯。" : `${dateLabel(date)}的飲食紀錄`}</h1><p className="muted">營養欄位以每份紀錄，總計會依食用份數換算。</p></div><div className="header-actions"><button className="copy-btn" onClick={exportData}>匯出資料</button><button className="primary" onClick={() => setEntryEditor(null)}>＋ 新增紀錄</button></div></header>
+    <header><div><p className="eyebrow">DAILY LOG</p><h1>{date === formatLocalDate(new Date()) ? "今天，好好吃飯。" : `${dateLabel(date)}的飲食紀錄`}</h1><p className="muted">營養欄位以每份紀錄，總計會依食用份數換算。</p></div><div className="header-actions"><span className="sync-status" aria-live="polite">{loading ? "同步中…" : lastSyncedAt ? `已同步 ${new Intl.DateTimeFormat("zh-TW", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Taipei" }).format(new Date(lastSyncedAt))}` : "尚未同步"}</span><button className="refresh-btn" onClick={() => void refresh()} disabled={loading} aria-label="重新整理當日紀錄"><span aria-hidden="true">↻</span><b>重新整理</b></button><button className="copy-btn" onClick={exportData}>匯出資料</button><button className="primary" onClick={() => setEntryEditor(null)}>＋ 新增紀錄</button></div></header>
     {notice && <p className="notice">{notice}</p>}
     <DailyGuidance totals={totals} waterMl={hydration.totalWaterMl} entries={entries} weightKg={weightKg} />
     <section className="hero-card"><div><p>今日熱量</p><div className="calorie"><strong>{Math.round(totals.caloriesKcal)}</strong><span> / {targetRangeText(targets.caloriesKcal, "kcal")}</span></div><div className="meter"><i style={{ width: `${Math.min(100, totals.caloriesKcal / targets.caloriesKcal.max * 100)}%` }} /></div><p className={calorieStatus.className}>{calorieStatus.text}</p></div><div className="weight"><span>當日紀錄</span><strong>{entries.length} <small>項</small></strong><p>纖維 {formatNutrition(totals.fiberG, "g")} · 鈉 {formatNutrition(totals.sodiumMg, "mg")}</p></div></section>
