@@ -1,6 +1,6 @@
 # Hermes × 日常營養
 
-Hermes 不應操作網站畫面；它應將整理好的資料送到網站 API。這樣資料有一致的格式、能修正舊紀錄，也不需要把 Firebase 管理權限交給 Hermes。
+Hermes 不操作網站畫面；它將整理好的資料送到私有 API。這可維持一致格式、避免重複寫入，也不需要把 Firebase 管理權限交給 Hermes。
 
 ## Hermes 環境變數
 
@@ -13,67 +13,78 @@ HERMES_API_SECRET=與 Vercel 相同的一串隨機密鑰
 
 `HERMES_API_SECRET` 只存在 Hermes 主機與 Vercel；不可傳到 Discord、GitHub 或瀏覽器。
 
-## 安裝 Hermes skill
+## 安裝與更新 Skill
 
-此專案已提供可安裝的 skill 與送出工具。將 `hermes/health-log/` 複製到 Hermes 主機的 `~/.hermes/skills/health-log/`，並保留 `SKILL.md` 與 `scripts/health_api.py` 的相對位置。
+將專案中的 `hermes/health-log/` 複製到 Hermes 主機的 `~/.hermes/skills/health-log/`。必須保留：
+
+- `SKILL.md`
+- `scripts/health_log.py`
+- `scripts/health_api.py`
+- `references/`
+
+日常操作一律透過 `health_log.py`。`health_api.py` 是底層傳輸程式，不應直接用它新增白水、食物或身體資料，否則會繞過防重複保護。
+
+## 唯一的日常新增寫入方式
+
+同一則 Discord 訊息中的食物、飲品、白水與身體資料，必須合併為一個 `log_health_event`。把 Discord message ID 放入 `eventId`：
+
+```bash
+python3 scripts/health_log.py <<'EOF'
+{
+  "intent": "log_health_event",
+  "date": "today",
+  "eventId": "DISCORD_MESSAGE_ID",
+  "entries": [
+    {
+      "name": "光泉無加糖黑豆漿",
+      "brand": "光泉",
+      "category": "豆類",
+      "meal": "早餐",
+      "servings": 1,
+      "hydrationMl": 400,
+      "nutrition": { "calories": 142, "protein": 14, "carbs": 5.2, "fat": 7.2, "sodium": 56 },
+      "source": "nutrition_label",
+      "confidence": "high"
+    }
+  ],
+  "plainWaterMl": 500
+}
+EOF
+```
+
+`date: "today"` 會依 Asia/Taipei 轉換日期。相同 `eventId` 重送時，API 會回傳原本結果與 `replayed: true`，不會再新增一次資料。成功回應中的 `dailySummary` 是 Hermes 回覆使用者時唯一應採用的累計數字。
+
+### 水分規則
+
+- 純白水：只放 `plainWaterMl`。
+- 飲料、豆漿、咖啡、湯品：建立 food entry，並填該次的 `hydrationMl`。
+- 同一飲品不可同時填 `hydrationMl` 與 `plainWaterMl`。
+
+## 讀取、更正與常用食物
+
+透過 `health_log.py` 傳入原始 `action` JSON：
+
+- `get_daily_summary`：讀取某日。
+- `get_range_summary`：分析一段日期，僅讀取。
+- `amend_food`：先讀取摘要並用精確 `entryId` 更正。
+- `delete_food`：先讀取摘要、確認精確項目後才刪除。
+- `find_foods`、`upsert_food`：查詢或在使用者明確要求時儲存常用食物。
+
+一般 `amend_food` 只可更新營養、份數、食用百分比、每份重量、水分、來源、信心度與備註。不可改日期、名稱、餐次、時間或 `entryId`。
+
+## 已淘汰的日常寫入 action
+
+`log_food`、`log_water`、`log_body` 是早期端點，沒有 Discord event 的冪等保護。它們不可以被 Hermes Skill 使用；`health_log.py` 會直接拒絕。舊端點暫時只保留給既有遷移工具相容，日常紀錄一律用 `log_health_event`。
+
+歷史匯入、日期平移與覆蓋匯入是一次性遷移工具，不屬於日常 Hermes 對話流程；執行前必須先備份並取得使用者明確同意。
 
 ## API 簽章
 
-每個請求須為 JSON，並包含以下 headers：
+每個請求須帶：
 
 ```text
 x-health-timestamp: Unix milliseconds
 x-health-signature: HMAC-SHA256("{timestamp}.{raw JSON body}")
 ```
 
-請求在五分鐘後失效。API 的資料永遠寫進 `HEALTH_TRACKER_OWNER_ID` 對應帳號，不能由請求本身指定使用者。
-
-## 常用 payload
-
-### 記錄食物
-
-```json
-{
-  "action": "log_food",
-  "date": "2026-07-14",
-  "entries": [{
-    "name": "光泉無加糖黑豆漿",
-    "meal": "早餐",
-    "nutrition": { "calories": 142, "protein": 14, "carbs": 5.2, "fat": 7.2, "sodium": 56 },
-    "portion": 1,
-    "unit": "瓶",
-    "time": "08:30",
-    "source": "nutrition_label",
-    "confidence": "high"
-  }]
-}
-```
-
-### 補登喝水與體重
-
-```json
-{ "action": "log_water", "date": "2026-07-14", "addMl": 500 }
-```
-
-```json
-{ "action": "log_body", "date": "2026-07-14", "weightKg": 74.2, "steps": 6693 }
-```
-
-### 修正食物
-
-先讀取 `get_daily_summary`，再使用精確的 `entryId`：
-
-```json
-{
-  "action": "amend_food",
-  "date": "2026-07-14",
-  "entryId": "要修改的紀錄 ID",
-  "changes": { "portion": 0.5, "unit": "份" }
-}
-```
-
-## Hermes 用戶端腳本
-
-內附的 `scripts/health_api.py` 只讀取 `HEALTH_TRACKER_URL` 和 `HERMES_API_SECRET`，依上方規格計算 HMAC 後送出 JSON。不要將密鑰寫入腳本或技能檔。
-
-> 重要：目前 API 的 `amend_food` 會更新提供的欄位。若變更份量，Hermes 必須連同重新計算後的營養值一併送出，或改為刪除舊紀錄後重新以正確份量寫入。
+請求五分鐘後失效。API 永遠寫入 `HEALTH_TRACKER_OWNER_ID` 對應的帳號，請求不可指定任意使用者。
