@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calculateDailyNutrition, calculateHydrationSummary, calculateNutritionByPortion, calculateRemainingCalories, calculateSevenDayAverage, categoryGroupOf, getWeekRange, isDrinkCategory, normalizeFoodRecord } from "../lib/nutrition";
+import { calculateDailyNutrition, calculateHydrationSummary, calculateNutritionByPortion, calculateRemainingCalories, calculateSevenDayAverage, categoryGroupOf, getWeekRange, isDrinkCategory, normalizeFoodCategory, normalizeFoodRecord } from "../lib/nutrition";
 
 describe("nutrition utilities", () => {
   it("scales all nutrients by servings", () => expect(calculateNutritionByPortion({ caloriesKcal: 200, proteinG: 20, carbsG: 10, fatG: 5, sugarG: 1, fiberG: 2, saturatedFatG: 1, transFatG: null, sodiumMg: 200, potassiumMg: null, cholesterolMg: null, caffeineMg: 0 }, 1.5)).toMatchObject({ caloriesKcal: 300, proteinG: 30, fatG: 7.5 }));
@@ -26,9 +26,21 @@ describe("nutrition utilities", () => {
     expect(categoryGroupOf("乳飲")).toBe("drink");
     expect(categoryGroupOf("主食")).toBe("food");
     expect(categoryGroupOf("餐盒")).toBe("food");
+    expect(categoryGroupOf("雞胸類")).toBe("food");
+    expect(categoryGroupOf("飯糰類")).toBe("food");
     expect(categoryGroupOf(null)).toBe("other");
     expect(categoryGroupOf("其他", 330)).toBe("drink");
     expect(isDrinkCategory("肉類")).toBe(false);
     expect(isDrinkCategory(null, 400)).toBe(true);
+  });
+  it("collapses free-form and AI tags into canonical categories", () => {
+    expect(normalizeFoodCategory("雞胸肉")).toBe("雞胸類");
+    expect(normalizeFoodCategory("雞肉")).toBe("雞胸類");
+    expect(normalizeFoodCategory("meat", "雞胸沙拉")).toBe("雞胸類");
+    expect(normalizeFoodCategory("meat")).toBe("肉類");
+    expect(normalizeFoodCategory(null, "三角飯糰")).toBe("飯糰類");
+    expect(normalizeFoodCategory("staple")).toBe("主食");
+    expect(normalizeFoodCategory("coffee")).toBe("咖啡茶飲");
+    expect(normalizeFoodCategory("random_tag_xyz")).toBe("其他");
   });
 });

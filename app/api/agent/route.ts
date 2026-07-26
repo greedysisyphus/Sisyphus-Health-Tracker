@@ -11,6 +11,7 @@ import {
   totalForEntryData,
 } from "../../../lib/agent-health";
 import { getAdminDb } from "../../../lib/firebase-admin";
+import { normalizeFoodCategory } from "../../../lib/nutrition";
 
 export const runtime = "nodejs";
 
@@ -203,7 +204,7 @@ export async function POST(request: Request) {
         const id = item.id ?? crypto.randomUUID();
         const nutrition = item.nutrition;
         const servings = item.servings ?? item.portion ?? 1;
-        const entry = { id, name: item.name, brand: item.brand ?? null, category: item.category ?? null, mealType: item.meal, servings, consumedPercent: item.consumedPercent ?? 100, servingWeightG: item.servingWeightG ?? null, caloriesKcal: nutrition.calories, proteinG: nutrition.protein, carbsG: nutrition.carbs, fatG: nutrition.fat, sugarG: nutrition.sugar, fiberG: nutrition.fiber, saturatedFatG: nutrition.saturatedFat, transFatG: nutrition.transFat, sodiumMg: nutrition.sodium, potassiumMg: nutrition.potassium, cholesterolMg: nutrition.cholesterol, caffeineMg: nutrition.caffeine, hydrationMl: item.hydrationMl, time: item.time, source: item.source, confidence: item.confidence, notes: item.notes ?? null, createdAt: now, updatedAt: now };
+        const entry = { id, name: item.name, brand: item.brand ?? null, category: normalizeFoodCategory(item.category, item.name), mealType: item.meal, servings, consumedPercent: item.consumedPercent ?? 100, servingWeightG: item.servingWeightG ?? null, caloriesKcal: nutrition.calories, proteinG: nutrition.protein, carbsG: nutrition.carbs, fatG: nutrition.fat, sugarG: nutrition.sugar, fiberG: nutrition.fiber, saturatedFatG: nutrition.saturatedFat, transFatG: nutrition.transFat, sodiumMg: nutrition.sodium, potassiumMg: nutrition.potassium, cholesterolMg: nutrition.cholesterol, caffeineMg: nutrition.caffeine, hydrationMl: item.hydrationMl, time: item.time, source: item.source, confidence: item.confidence, notes: item.notes ?? null, createdAt: now, updatedAt: now };
         batch.set(entryRef(db, ownerId, input.date, id), entry, { merge: true });
         return entry;
       });
@@ -253,7 +254,7 @@ export async function POST(request: Request) {
       const id = input.food.id ?? crypto.randomUUID();
       const nutrition = input.food.nutrition;
       await db.doc(`users/${ownerId}/foods/${id}`).set({
-        id, name: input.food.name, brand: input.food.brand ?? null, category: input.food.category ?? null, servingWeightG: input.food.servingWeightG ?? null, hydrationMlPerServing: input.food.hydrationMlPerServing,
+        id, name: input.food.name, brand: input.food.brand ?? null, category: normalizeFoodCategory(input.food.category, input.food.name), servingWeightG: input.food.servingWeightG ?? null, hydrationMlPerServing: input.food.hydrationMlPerServing,
         nutrition: { caloriesKcal: nutrition.calories, proteinG: nutrition.protein, carbsG: nutrition.carbs, fatG: nutrition.fat, fiberG: nutrition.fiber, sugarG: nutrition.sugar, saturatedFatG: nutrition.saturatedFat, transFatG: nutrition.transFat, sodiumMg: nutrition.sodium, potassiumMg: nutrition.potassium, cholesterolMg: nutrition.cholesterol, caffeineMg: nutrition.caffeine },
         favorite: input.food.favorite, notes: input.food.notes ?? null, useCount: 0, createdAt: now, updatedAt: now,
       }, { merge: true });
@@ -303,7 +304,7 @@ export async function POST(request: Request) {
             id: `historic-food-${record.date}-${index}`,
             name: food.name,
             brand: food.brand ?? null,
-            category: food.category ?? null,
+            category: normalizeFoodCategory(food.category, food.name),
             mealType: "其他" as const,
             servings: 1,
             servingWeightG: food.serving_weight_g ?? null,
@@ -384,7 +385,7 @@ export async function POST(request: Request) {
           const notes = [item.note, item.quantity_note, item.components?.length ? `包含：${item.components.join("、")}` : undefined].filter(Boolean).join("；") || undefined;
           const id = `historic-export-${record.date}-${index}`;
           batch.set(entryRef(db, ownerId, record.date, id), {
-            id, name: item.name, brand: null, category: null, mealType: meal, servings: 1, servingWeightG: item.weight_g ?? null,
+            id, name: item.name, brand: null, category: normalizeFoodCategory(null, item.name), mealType: meal, servings: 1, servingWeightG: item.weight_g ?? null,
             caloriesKcal: nutrition?.calories_kcal ?? 0, proteinG: nutrition?.protein_g ?? 0, carbsG: nutrition?.carbohydrate_g ?? 0, fatG: nutrition?.fat_g ?? 0, sugarG: nutrition?.sugar_g ?? 0, fiberG: nutrition?.fiber_g ?? 0, saturatedFatG: nutrition?.saturated_fat_g ?? 0, transFatG: nutrition?.trans_fat_g ?? null, sodiumMg: nutrition?.sodium_mg ?? 0, potassiumMg: nutrition?.potassium_mg ?? null, cholesterolMg: nutrition?.cholesterol_mg ?? null, caffeineMg: nutrition?.caffeine_mg ?? 0,
             hydrationMl: item.volume_ml ?? 0, time: "歷史匯入", source: nutrition?.estimated === false ? "nutrition_label" : "ai_estimated", confidence: nutrition?.estimated === false ? "high" : "medium", notes: notes ?? null, createdAt: now, updatedAt: now,
           });
