@@ -42,7 +42,50 @@ export type HydrationSummary = {
 };
 
 export const meals: MealType[] = ["早餐", "午餐", "晚餐", "點心", "飲料", "宵夜", "其他"];
-export const foodCategories = ["主食", "肉類", "海鮮", "蛋類", "乳製品", "豆類", "蔬菜", "水果", "堅果", "飲料", "零食", "餐盒", "醬料", "其他"] as const;
+
+/** Fine-grained food/drink labels stored on entries and saved foods. */
+export const foodCategories = [
+  "主食", "肉類", "海鮮", "蛋類", "乳製品", "豆類", "蔬菜", "水果", "堅果",
+  "飲料", "咖啡茶飲", "乳飲",
+  "零食", "餐盒", "醬料", "其他",
+] as const;
+
+export type FoodCategory = typeof foodCategories[number];
+export type FoodCategoryGroupId = "all" | "drink" | "food" | "other";
+
+export const foodCategoryGroups: {
+  id: Exclude<FoodCategoryGroupId, "all">;
+  label: string;
+  categories: readonly FoodCategory[];
+}[] = [
+  { id: "drink", label: "飲品類", categories: ["飲料", "咖啡茶飲", "乳飲"] },
+  {
+    id: "food",
+    label: "食物類",
+    categories: ["主食", "肉類", "海鮮", "蛋類", "乳製品", "豆類", "蔬菜", "水果", "堅果", "零食", "餐盒", "醬料"],
+  },
+  { id: "other", label: "其他", categories: ["其他"] },
+];
+
+const drinkCategorySet = new Set<string>(foodCategoryGroups.find(group => group.id === "drink")!.categories);
+const foodCategorySet = new Set<string>(foodCategoryGroups.find(group => group.id === "food")!.categories);
+
+/** Map a stored category (+ optional hydration) into 飲品類 / 食物類 / 其他. */
+export function categoryGroupOf(category: string | null | undefined, hydrationMl = 0): Exclude<FoodCategoryGroupId, "all"> {
+  if (category && drinkCategorySet.has(category)) return "drink";
+  if (category && foodCategorySet.has(category)) return "food";
+  // Legacy drinks often only have hydration and no category / 其他.
+  if (hydrationMl > 0 && (!category || category === "其他")) return "drink";
+  return "other";
+}
+
+export function isDrinkCategory(category: string | null | undefined, hydrationMl = 0): boolean {
+  return categoryGroupOf(category, hydrationMl) === "drink";
+}
+
+export function foodCategoryGroupLabel(group: Exclude<FoodCategoryGroupId, "all">): string {
+  return foodCategoryGroups.find(item => item.id === group)?.label ?? "其他";
+}
 
 export const emptyNutrition = (): Nutrition => ({ caloriesKcal: 0, proteinG: 0, carbsG: 0, fatG: 0, fiberG: 0, sugarG: 0, saturatedFatG: 0, transFatG: null, sodiumMg: 0, potassiumMg: null, cholesterolMg: null, caffeineMg: 0 });
 

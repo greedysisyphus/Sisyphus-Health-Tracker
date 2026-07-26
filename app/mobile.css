@@ -311,3 +311,100 @@ h1 { letter-spacing: -1.7px; line-height: 1.12; }
   /* The compact header action rule must never shrink the Google sign-in label. */
   .setup .primary { font-size: 14px; padding: 12px 17px; white-space: normal; }
 }
+
+/* Common-food category groups */
+.library-group-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 12px;
+}
+.library-group-tabs button {
+  align-items: center;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--muted);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  min-height: 54px;
+  padding: 10px 8px;
+}
+.library-group-tabs button small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+.library-group-tabs button.active {
+  background: var(--sage-dark);
+  border-color: var(--sage-dark);
+  color: #fff;
+}
+.library-group-tabs button.active small {
+  color: #d7e7e1;
+}
+.library-category-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 16px;
+}
+.library-category-chips button {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--sage-dark);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 7px 11px;
+}
+.library-category-chips button small {
+  color: var(--muted);
+  margin-left: 5px;
+}
+.library-category-chips button.active {
+  background: var(--sage-pale);
+  border-color: #b7cdc4;
+  font-weight: 700;
+}
+.food-library-group-heading {
+  align-items: center;
+  background: #f4f7f5;
+  border-bottom: 1px solid var(--line);
+  color: var(--sage-dark);
+  display: flex;
+  gap: 8px;
+  padding: 10px 16px;
+}
+.food-library-group-heading b {
+  font-size: 12px;
+}
+.food-library-group-heading span {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+.food-library-group-heading small {
+  color: var(--muted);
+  margin-left: auto;
+}
+.food-library-group + .food-library-group {
+  border-top: 1px solid var(--line);
+}
+@media (max-width: 760px) {
+  .library-group-tabs {
+    gap: 6px;
+  }
+  .library-group-tabs button {
+    font-size: 12px;
+    min-height: 50px;
+    padding: 8px 4px;
+  }
+  .food-library-group-heading {
+    padding: 9px 12px;
+  }
+}
