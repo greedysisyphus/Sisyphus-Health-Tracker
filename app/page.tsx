@@ -503,7 +503,7 @@ function FoodLibrary({ date, foods, add, quickAdd, edit, remove, mergeDuplicates
         </div>
       )) : <p className="empty">尚無符合的常用食物。</p>}
     </section>
-    {groupToMerge && <Sheet title="合併重複常用食物" close={() => !merging && setGroupToMerge(null)}><p className="muted">以下 {groupToMerge.foods.length} 筆名稱相同，且沒有品牌衝突。確認後會優先保留品牌資料完整、使用次數較高的一筆，並刪除其餘常用食物。</p><ul className="duplicate-list">{groupToMerge.foods.map(food => <li key={food.id}><b>{food.name}</b><span>{food.brand ?? "未填品牌"} · 使用 {food.useCount} 次</span></li>)}</ul><button className="save-btn" onClick={() => void merge()} disabled={merging}>{merging ? "合併中…" : `確認合併 ${groupToMerge.foods.length} 筆食物`}</button></Sheet>}
+    {groupToMerge && <Sheet title="合併重複常用食物" close={() => !merging && setGroupToMerge(null)} footer={<button className="save-btn" onClick={() => void merge()} disabled={merging}>{merging ? "合併中…" : `確認合併 ${groupToMerge.foods.length} 筆食物`}</button>}><p className="muted">以下 {groupToMerge.foods.length} 筆名稱相同，且沒有品牌衝突。確認後會優先保留品牌資料完整、使用次數較高的一筆，並刪除其餘常用食物。</p><ul className="duplicate-list">{groupToMerge.foods.map(food => <li key={food.id}><b>{food.name}</b><span>{food.brand ?? "未填品牌"} · 使用 {food.useCount} 次</span></li>)}</ul></Sheet>}
     {foodToAdd && <Sheet title={`加入${dateLabel(date)}`} close={() => !adding && setFoodToAdd(null)}><p className="muted">「{foodToAdd.name}」要記錄在哪一餐？</p><div className="meal-choices">{(["早餐", "午餐", "晚餐", "點心", "宵夜", "其他"] as MealType[]).map(meal => <button key={meal} className="parse-btn" disabled={adding} onClick={() => void addToMeal(meal)}>{meal}</button>)}</div></Sheet>}
   </>;
 }
@@ -539,7 +539,93 @@ function FoodFields({ draft, setDraft, includeMeal, savedFoods, applySaved, hydr
   </>;
 }
 function parseDraft(draft: Draft): { nutrition: Nutrition; servings: number; consumedPercent: number; servingWeightG: number | null; hydrationMl: number; error?: string } { const servings = parseNonNegativeNumber(draft.values.servings); const consumedPercent = parseNonNegativeNumber(draft.values.consumedPercent); if (servings === null || servings <= 0) return { nutrition: emptyNutrition(), servings: 0, consumedPercent: 100, servingWeightG: null, hydrationMl: 0, error: "食用份數必須大於 0。" }; if (consumedPercent === null || consumedPercent <= 0 || consumedPercent > 100) return { nutrition: emptyNutrition(), servings, consumedPercent: 100, servingWeightG: null, hydrationMl: 0, error: "吃完比例必須介於 1% 到 100%。" }; const hydrationMl = parseNonNegativeNumber(draft.values.hydrationMl); if (hydrationMl === null) return { nutrition: emptyNutrition(), servings, consumedPercent, servingWeightG: null, hydrationMl: 0, error: "水分 ml 必須是有效的非負數。" }; const nutrition = emptyNutrition(); for (const item of [...primaryKeys, ...otherKeys]) { const value = parseNonNegativeNumber(draft.values[item.key]); if (value === null && !item.optional) return { nutrition, servings, consumedPercent, servingWeightG: null, hydrationMl, error: `${item.label} 必須是有效的非負數。` }; (nutrition as Record<string, number | null>)[item.key] = value; } return { nutrition, servings, consumedPercent, servingWeightG: parseNonNegativeNumber(draft.values.servingWeightG), hydrationMl }; }
-function EntryEditor({ initial, savedFoods, close, save }: { initial: FoodEntry | null; savedFoods: SavedFoodSummary[]; close: () => void; save: (entry: FoodEntry) => Promise<void> }) { const [draft, setDraft] = useState(() => draftFrom(initial ?? undefined)); const [error, setError] = useState(""); const [saving, setSaving] = useState(false); const submit = async () => { if (!draft.name.trim()) return setError("食物名稱不可空白。"); const parsed = parseDraft(draft); if (parsed.error) return setError(parsed.error); setSaving(true); try { await save({ id: initial?.id ?? crypto.randomUUID(), name: draft.name.trim(), brand: draft.brand.trim() || null, category: draft.category || null, mealType: draft.mealType, servings: parsed.servings, consumedPercent: parsed.consumedPercent, servingWeightG: parsed.servingWeightG, ...parsed.nutrition, hydrationMl: parsed.hydrationMl, time: initial?.time ?? nowTime(), notes: draft.notes.trim() || null, ...(initial?.source ? { source: initial.source } : {}), ...(initial?.confidence ? { confidence: initial.confidence } : {}), ...(draft.sourceFoodId ? { sourceFoodId: draft.sourceFoodId } : {}) }); } finally { setSaving(false); } }; return <Sheet title={initial ? "修改這筆紀錄" : "新增這筆紀錄"} close={close}><FoodFields draft={draft} setDraft={setDraft} includeMeal savedFoods={savedFoods} applySaved={food => setDraft(draftFrom(undefined, food))} hydrationLabel="水分 ml（本次；份數會同步換算）" />{error && <p className="form-error">{error}</p>}<button className="save-btn" onClick={() => void submit()} disabled={saving}>{saving ? "儲存中…" : "儲存資料"}</button></Sheet> }
-function SavedFoodEditor({ initial, close, save }: { initial: SavedFoodInput | null; close: () => void; save: (food: SavedFoodInput) => Promise<void> }) { const [draft, setDraft] = useState(() => draftFrom(undefined, initial ?? undefined)); const [error, setError] = useState(""); const [saving, setSaving] = useState(false); const submit = async () => { if (!draft.name.trim()) return setError("食物名稱不可空白。"); const parsed = parseDraft(draft); if (parsed.error) return setError(parsed.error); setSaving(true); try { await save({ id: initial?.id ?? crypto.randomUUID(), name: draft.name.trim(), brand: draft.brand.trim() || null, category: draft.category || null, servingWeightG: parsed.servingWeightG, hydrationMlPerServing: parsed.hydrationMl, nutrition: parsed.nutrition, favorite: initial?.favorite ?? true, notes: draft.notes.trim() || null }); } finally { setSaving(false); } }; return <Sheet title={initial ? "修改常用食物" : "新增常用食物"} close={close}><FoodFields draft={draft} setDraft={setDraft} includeMeal={false} hydrationLabel="每份水分 ml" />{error && <p className="form-error">{error}</p>}<button className="save-btn" onClick={() => void submit()} disabled={saving}>{saving ? "儲存中…" : "儲存食物"}</button></Sheet> }
-function Sheet({ title, close, children }: { title: string; close: () => void; children: React.ReactNode }) { return <div className="sheet-backdrop" onClick={close}><section className="sheet detail-sheet" onClick={event => event.stopPropagation()}><div className="grab" /><div className="sheet-title"><div><p className="eyebrow">DAILY LOG</p><h2>{title}</h2></div><button onClick={close}>×</button></div>{children}</section></div> }
+function EntryEditor({ initial, savedFoods, close, save }: { initial: FoodEntry | null; savedFoods: SavedFoodSummary[]; close: () => void; save: (entry: FoodEntry) => Promise<void> }) {
+  const [draft, setDraft] = useState(() => draftFrom(initial ?? undefined));
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const submit = async () => {
+    if (!draft.name.trim()) return setError("食物名稱不可空白。");
+    const parsed = parseDraft(draft);
+    if (parsed.error) return setError(parsed.error);
+    setSaving(true);
+    try {
+      await save({
+        id: initial?.id ?? crypto.randomUUID(),
+        name: draft.name.trim(),
+        brand: draft.brand.trim() || null,
+        category: draft.category || null,
+        mealType: draft.mealType,
+        servings: parsed.servings,
+        consumedPercent: parsed.consumedPercent,
+        servingWeightG: parsed.servingWeightG,
+        ...parsed.nutrition,
+        hydrationMl: parsed.hydrationMl,
+        time: initial?.time ?? nowTime(),
+        notes: draft.notes.trim() || null,
+        ...(initial?.source ? { source: initial.source } : {}),
+        ...(initial?.confidence ? { confidence: initial.confidence } : {}),
+        ...(draft.sourceFoodId ? { sourceFoodId: draft.sourceFoodId } : {}),
+      });
+    } finally { setSaving(false); }
+  };
+  return (
+    <Sheet
+      title={initial ? "修改這筆紀錄" : "新增這筆紀錄"}
+      close={close}
+      footer={<button className="save-btn" onClick={() => void submit()} disabled={saving}>{saving ? "儲存中…" : "儲存資料"}</button>}
+    >
+      <FoodFields draft={draft} setDraft={setDraft} includeMeal savedFoods={savedFoods} applySaved={food => setDraft(draftFrom(undefined, food))} hydrationLabel="水分 ml（本次；份數會同步換算）" />
+      {error && <p className="form-error">{error}</p>}
+    </Sheet>
+  );
+}
+function SavedFoodEditor({ initial, close, save }: { initial: SavedFoodInput | null; close: () => void; save: (food: SavedFoodInput) => Promise<void> }) {
+  const [draft, setDraft] = useState(() => draftFrom(undefined, initial ?? undefined));
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const submit = async () => {
+    if (!draft.name.trim()) return setError("食物名稱不可空白。");
+    const parsed = parseDraft(draft);
+    if (parsed.error) return setError(parsed.error);
+    setSaving(true);
+    try {
+      await save({
+        id: initial?.id ?? crypto.randomUUID(),
+        name: draft.name.trim(),
+        brand: draft.brand.trim() || null,
+        category: draft.category || null,
+        servingWeightG: parsed.servingWeightG,
+        hydrationMlPerServing: parsed.hydrationMl,
+        nutrition: parsed.nutrition,
+        favorite: initial?.favorite ?? true,
+        notes: draft.notes.trim() || null,
+      });
+    } finally { setSaving(false); }
+  };
+  return (
+    <Sheet
+      title={initial ? "修改常用食物" : "新增常用食物"}
+      close={close}
+      footer={<button className="save-btn" onClick={() => void submit()} disabled={saving}>{saving ? "儲存中…" : "儲存食物"}</button>}
+    >
+      <FoodFields draft={draft} setDraft={setDraft} includeMeal={false} hydrationLabel="每份水分 ml" />
+      {error && <p className="form-error">{error}</p>}
+    </Sheet>
+  );
+}
+function Sheet({ title, close, children, footer }: { title: string; close: () => void; children: React.ReactNode; footer?: React.ReactNode }) {
+  return (
+    <div className="sheet-backdrop" onClick={close}>
+      <section className="sheet detail-sheet" onClick={event => event.stopPropagation()} role="dialog" aria-modal="true" aria-label={title}>
+        <div className="grab" />
+        <div className="sheet-title">
+          <div><p className="eyebrow">DAILY LOG</p><h2>{title}</h2></div>
+          <button type="button" onClick={close} aria-label="關閉">×</button>
+        </div>
+        <div className="sheet-body">{children}</div>
+        {footer ? <div className="sheet-footer">{footer}</div> : null}
+      </section>
+    </div>
+  );
+}
 function ExportSheet({ close, exportRecords, copyAnalysis, analysisReady, analysisPreparing }: { close: () => void; exportRecords: (start: string, end: string) => Promise<void>; copyAnalysis: (days: 1 | 3 | 7) => Promise<boolean>; analysisReady: boolean; analysisPreparing: boolean }) { const today = formatLocalDate(new Date()); const [start, setStart] = useState(formatLocalDate(new Date(new Date(`${today}T12:00:00`).getTime() - 6 * 86400000))); const [end, setEnd] = useState(today); const [working, setWorking] = useState(false); const download = async () => { setWorking(true); try { await exportRecords(start, end); } finally { setWorking(false); } }; const copy = (days: 1 | 3 | 7) => { void copyAnalysis(days); }; return <Sheet title="複製給 ChatGPT 分析" close={close}><p className="muted export-copy">先準備資料，再立即複製；這樣 iPhone Safari 可以正常運作。</p><div className="analysis-choices"><button className="save-btn" disabled={!analysisReady} onClick={() => copy(1)}>{analysisPreparing ? "正在準備資料…" : "複製今天資料＋分析指令"}</button><button className="parse-btn" disabled={!analysisReady} onClick={() => copy(3)}>複製最近 3 天資料＋分析指令</button><button className="parse-btn" disabled={!analysisReady} onClick={() => copy(7)}>複製最近 7 天資料＋分析指令</button></div><p className="export-divider">或下載完整資料</p><div className="form-grid"><label>開始日期<input type="date" value={start} onChange={event => setStart(event.target.value)} /></label><label>結束日期<input type="date" value={end} onChange={event => setEnd(event.target.value)} /></label></div><button className="parse-btn" disabled={working || start > end} onClick={() => void download()}>{working ? "準備中…" : "下載 JSON"}</button></Sheet> }
