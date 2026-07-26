@@ -4,6 +4,7 @@ import { onAuthStateChanged, signInWithPopup, signOut, type User } from "firebas
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { auth, googleProvider, hasFirebaseConfig } from "../lib/firebase";
 import { calculateDailyNutrition, calculateHydrationSummary, calculateSevenDayAverage, emptyNutrition, foodCategories, formatLocalDate, formatNutrition, meals, parseNonNegativeNumber, totalForEntry, type FoodEntry, type MealType, type Nutrition } from "../lib/nutrition";
+import { buildWeightTrendChart, collectWeightSamples } from "../lib/weight-trend";
 import { getBodyLog, getDailyLog, getUserProfile, listDailyEntries, listDailyOverviews, listFoods, mergeSavedFoodDuplicates, removeEntry, removeSavedFood, saveBodyLog, saveEntry, saveHealthTargets, saveSavedFood, saveWater, type DailyOverview, type SavedFoodInput, type SavedFoodSummary } from "../services/health-service";
 
 type View = "daily" | "overview" | "trends" | "foods" | "settings";
@@ -74,7 +75,7 @@ export default function Home() {
   }, [loadDaily, user, view]);
   useEffect(() => { const timer = window.setTimeout(() => { void loadLibrary().catch(() => setNotice("讀取常用食物失敗。")); }, 0); return () => window.clearTimeout(timer); }, [loadLibrary]);
   useEffect(() => { if (!user) return; void getUserProfile(user.uid).then(profile => { if (!profile) return; setTargets(current => ({ ...current, caloriesKcal: { min: profileNumber(profile, "calorieTargetMin", current.caloriesKcal.min), max: profileNumber(profile, "calorieTargetMax", current.caloriesKcal.max) }, proteinG: { min: profileNumber(profile, "proteinTargetMin", current.proteinG.min), max: profileNumber(profile, "proteinTargetMax", current.proteinG.max) }, carbsG: { min: profileNumber(profile, "carbTargetMin", current.carbsG.min), max: profileNumber(profile, "carbTargetMax", current.carbsG.max) }, fatG: { min: profileNumber(profile, "fatTargetMin", current.fatG.min), max: profileNumber(profile, "fatTargetMax", current.fatG.max) }, waterMl: { min: profileNumber(profile, "waterTargetMinMl", current.waterMl.min), max: profileNumber(profile, "waterTargetMaxMl", current.waterMl.max) }, fiberG: profileNumber(profile, "fiberTarget", current.fiberG), sodiumMg: profileNumber(profile, "sodiumLimit", current.sodiumMg) })); }).catch(() => setNotice("讀取個人目標失敗。")); }, [user]);
-  useEffect(() => { if (view === "daily") return; const timer = window.setTimeout(() => { void listDailyOverviews(user?.uid ?? "").then(setHistory).catch(() => setNotice("讀取彙整資料失敗。")); }, 0); return () => window.clearTimeout(timer); }, [user?.uid, view]);
+  useEffect(() => { if (view === "daily") return; const timer = window.setTimeout(() => { void listDailyOverviews(user?.uid ?? "", 120).then(setHistory).catch(() => setNotice("讀取彙整資料失敗。")); }, 0); return () => window.clearTimeout(timer); }, [user?.uid, view]);
 
   const saveDailyEntry = async (entry: FoodEntry) => {
     if (!user) return;
@@ -168,7 +169,7 @@ export default function Home() {
     <section className="content">
       <div className="mobile-topbar"><div className="brand"><i>n</i><span>日常營養</span></div><button className="text-button" onClick={() => void signOut(auth!)}>登出</button></div>
       {view === "daily" && <DailyView date={date} setDate={setDate} totals={totals} entries={entries} waterMl={waterMl} weightKg={weightKg} loading={loading} lastSyncedAt={lastSyncedAt} notice={notice} savedFoods={savedFoods} setEntryEditor={setEntryEditor} deleteEntry={deleteEntry} saveAsCommon={saveAsCommon} addWater={addWater} quickAddDrink={quickAddDrink} updateWeight={updateWeight} refresh={refreshDaily} exportData={openExport} />}
-      {view === "overview" && <Overview history={history} openDate={next => { setDate(next); setView("daily"); }} exportData={openExport} />}
+      {view === "overview" && <Overview history={history.filter(day => day.entries.length > 0 || day.waterMl > 0 || day.total.caloriesKcal > 0)} openDate={next => { setDate(next); setView("daily"); }} exportData={openExport} />}
       {view === "trends" && <Trends history={history} />}
       {view === "foods" && <FoodLibrary date={date} foods={savedFoods} add={() => setFoodEditor(null)} quickAdd={addSavedFoodToDay} edit={setFoodEditor} remove={deleteFood} mergeDuplicates={mergeDuplicateFoods} applySuggestedHydration={applySuggestedHydration} />}
       {view === "settings" && <TargetsSettings initial={targetState} save={async next => { if (!user) return; await saveHealthTargets(user.uid, { calorieTargetMin: next.caloriesKcal.min, calorieTargetMax: next.caloriesKcal.max, proteinTargetMin: next.proteinG.min, proteinTargetMax: next.proteinG.max, carbTargetMin: next.carbsG.min, carbTargetMax: next.carbsG.max, fatTargetMin: next.fatG.min, fatTargetMax: next.fatG.max, waterTargetMinMl: next.waterMl.min, waterTargetMaxMl: next.waterMl.max, fiberTarget: next.fiberG, sodiumLimit: next.sodiumMg }); setTargets(next); setNotice("已更新每日目標。"); }} />}
@@ -272,19 +273,55 @@ function Trends({ history }: { history: DailyOverview[] }) {
   const completed = (predicate: (day: DailyOverview) => boolean) => completedDays.filter(predicate).length;
   const waterAverage = completedDays.length ? completedDays.reduce((sum, day) => sum + day.waterMl, 0) / completedDays.length : null;
   const weightAverage = calculateSevenDayAverage(completedDays.map(day => day.weightKg ?? null));
+  const weightSamples = collectWeightSamples(history);
+  const weightChart = buildWeightTrendChart(weightSamples);
+  const deltaLabel = !weightChart ? "" : weightChart.deltaKg === 0 ? "持平" : `${weightChart.deltaKg > 0 ? "+" : ""}${weightChart.deltaKg} kg`;
   return <>
-    <header><div><p className="eyebrow">WEEKLY REPORT</p><h1>這一週，走得怎麼樣？</h1><p className="muted">最近 7 天中已有 {days.length} 天紀錄；平均與達成率只計入已結束的 {completedDays.length} 天。</p></div></header>
-    {!days.length ? <p className="empty">最近 7 天尚無可分析的紀錄。</p> : <>
+    <header><div><p className="eyebrow">WEEKLY REPORT</p><h1>這一週，走得怎麼樣？</h1><p className="muted">體重即使不是每天量也會連成趨勢線；週平均與達成率只計入已結束的 {completedDays.length} 天。</p></div></header>
+    <section className="trend-card weight-trend-card">
+      <div className="weight-trend-head">
+        <div><h3>體重追蹤</h3><p>以實際量測點連線；缺日不中斷，也不會把空白當成 0。</p></div>
+        {weightChart && <div className="weight-trend-stats">
+          <div><p>最新</p><h2>{weightChart.latest.weightKg.toFixed(1)} <small>kg</small></h2></div>
+          <div><p>區間均重</p><h2>{weightChart.averageKg.toFixed(1)} <small>kg</small></h2></div>
+          <div><p>{weightChart.first.date.slice(5)} → {weightChart.latest.date.slice(5)}</p><h2 className={weightChart.deltaKg < 0 ? "down" : weightChart.deltaKg > 0 ? "up" : ""}>{deltaLabel}</h2></div>
+        </div>}
+      </div>
+      {weightChart ? (
+        <div className="weight-chart-wrap" role="img" aria-label={`體重趨勢，從 ${weightChart.first.weightKg} 公斤到 ${weightChart.latest.weightKg} 公斤`}>
+          <svg className="weight-chart" viewBox={`0 0 ${weightChart.width} ${weightChart.height}`} preserveAspectRatio="none">
+            {weightChart.yTicks.map(tick => (
+              <g key={tick.label}>
+                <line className="weight-grid" x1="44" x2={weightChart.width - 18} y1={tick.y} y2={tick.y} />
+                <text className="weight-axis" x="40" y={tick.y + 4} textAnchor="end">{tick.label}</text>
+              </g>
+            ))}
+            <path className="weight-line" d={weightChart.path} />
+            {weightChart.points.map(point => (
+              <g key={point.date}>
+                <circle className="weight-dot" cx={point.x} cy={point.y} r="4.5" />
+                <title>{`${point.date} · ${point.weightKg} kg`}</title>
+              </g>
+            ))}
+            {weightChart.xLabels.map(label => (
+              <text key={`${label.date}-${label.x}`} className="weight-axis" x={label.x} y={weightChart.height - 8} textAnchor="middle">{label.label}</text>
+            ))}
+          </svg>
+          <p className="weight-chart-note">{weightChart.points.length} 次量測 · 線段跨越未量測日期，不代表中間有補值紀錄</p>
+        </div>
+      ) : <p className="empty">還沒有體重紀錄。在每日頁輸入體重後，這裡會自動連成趨勢線。</p>}
+    </section>
+    {!days.length ? <p className="empty">最近 7 天尚無可分析的飲食／水分紀錄。</p> : <>
       {todaySoFar && <section className="today-so-far"><div><b>今天截至目前</b><span>不計入週平均與達成率</span></div><p>熱量 {formatNutrition(todaySoFar.total.caloriesKcal, "kcal")}　蛋白質 {formatNutrition(todaySoFar.total.proteinG, "g")}　水分 {todaySoFar.waterMl} ml</p></section>}
       <section className="trend-card weekly-summary"><div><div><p>平均熱量</p><h2>{average("caloriesKcal") === null ? "—" : formatNutrition(average("caloriesKcal"), "kcal")}</h2></div><div><p>平均蛋白質</p><h2>{average("proteinG") === null ? "—" : formatNutrition(average("proteinG"), "g")}</h2></div><div><p>平均纖維</p><h2>{average("fiberG") === null ? "—" : formatNutrition(average("fiberG"), "g")}</h2></div><div><p>平均鈉</p><h2>{average("sodiumMg") === null ? "—" : formatNutrition(average("sodiumMg"), "mg")}</h2></div><div><p>平均水分</p><h2>{waterAverage === null ? "—" : Math.round(waterAverage)} <small>{waterAverage === null ? "尚無完整日" : "ml"}</small></h2></div><div><p>體重 7 日平均</p><h2>{weightAverage ?? "—"} <small>{weightAverage === null ? "未記錄" : "kg"}</small></h2></div></div></section>
       {completedDays.length ? <section className="weekly-goals"><h2>目標達成率</h2><div><GoalProgress label={`蛋白質 ${targetRangeText(targets.proteinG, "g")}`} value={completed(day => isInRange(day.total.proteinG, targets.proteinG))} total={completedDays.length} /><GoalProgress label={`水分 ${targetRangeText(targets.waterMl, "ml")}`} value={completed(day => isInRange(day.waterMl, targets.waterMl))} total={completedDays.length} /><GoalProgress label={`纖維 ≥ ${targets.fiberG} g`} value={completed(day => day.total.fiberG >= targets.fiberG)} total={completedDays.length} /><GoalProgress label={`鈉 ≤ ${targets.sodiumMg} mg`} value={completed(day => day.total.sodiumMg <= targets.sodiumMg)} total={completedDays.length} /></div></section> : <section className="weekly-goals weekly-goals-empty"><h2>目標達成率</h2><p>今天的資料仍在累積；明天起會開始計入這週達成率。</p></section>}
-      <section className="weekly-trends"><div className="weekly-trends-heading"><div><h2>7 日變化</h2><p>空白日期會顯示為「—」，不會當作 0 計算。</p></div></div><div className="weekly-trends-grid"><TrendSparkline label="體重" unit="kg" points={timeline.map(point => ({ date: point.date, value: point.day?.weightKg ?? null }))} /><TrendSparkline label="水分" unit="ml" target={targets.waterMl.min} points={timeline.map(point => ({ date: point.date, value: point.day?.waterMl ?? null }))} /><TrendSparkline label="蛋白質" unit="g" target={targets.proteinG.min} points={timeline.map(point => ({ date: point.date, value: point.day?.total.proteinG ?? null }))} /></div></section>
+      <section className="weekly-trends"><div className="weekly-trends-heading"><div><h2>7 日變化</h2><p>空白日期顯示「—」；體重線會跨過缺日，不會把缺值當 0。</p></div></div><div className="weekly-trends-grid"><TrendSparkline label="體重" unit="kg" connectGaps points={timeline.map(point => ({ date: point.date, value: point.day?.weightKg ?? null }))} /><TrendSparkline label="水分" unit="ml" target={targets.waterMl.min} points={timeline.map(point => ({ date: point.date, value: point.day?.waterMl ?? null }))} /><TrendSparkline label="蛋白質" unit="g" target={targets.proteinG.min} points={timeline.map(point => ({ date: point.date, value: point.day?.total.proteinG ?? null }))} /></div></section>
       <section className="trend-card"><h2>每日熱量與蛋白質</h2><div className="nutrition-bars">{days.map(day => <div key={day.date}><div className="bar-pair"><i style={{ height: `${Math.min(100, day.total.caloriesKcal / targets.caloriesKcal.max * 100)}%` }} /><em style={{ height: `${Math.min(100, day.total.proteinG / targets.proteinG.max * 100)}%` }} /></div><span>{day.date.slice(5)}</span><b>{Math.round(day.total.caloriesKcal)}</b></div>)}</div><p className="legend"><i /> 熱量　<em /> 蛋白質</p></section>
     </>}
   </>;
 }
 type TrendPoint = { date: string; value: number | null };
-function TrendSparkline({ label, unit, points, target }: { label: string; unit: "kg" | "ml" | "g"; points: TrendPoint[]; target?: number }) {
+function TrendSparkline({ label, unit, points, target, connectGaps = false }: { label: string; unit: "kg" | "ml" | "g"; points: TrendPoint[]; target?: number; connectGaps?: boolean }) {
   const values = points.flatMap(point => point.value === null || !Number.isFinite(point.value) ? [] : [point.value]);
   const average = values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
   const bounds = target === undefined ? values : [...values, target];
@@ -297,13 +334,13 @@ function TrendSparkline({ label, unit, points, target }: { label: string; unit: 
   const x = (index: number) => points.length > 1 ? 14 + index / (points.length - 1) * 322 : 175;
   const y = (value: number) => 88 - (value - min) / range * 76;
   const path = points.reduce((result, point, index) => {
-    if (point.value === null || !Number.isFinite(point.value)) return { path: result.path, connected: false };
+    if (point.value === null || !Number.isFinite(point.value)) return { path: result.path, connected: connectGaps ? result.connected : false };
     const command = result.connected ? "L" : "M";
     return { path: `${result.path}${result.path ? " " : ""}${command}${x(index).toFixed(1)},${y(point.value).toFixed(1)}`, connected: true };
   }, { path: "", connected: false }).path;
   const valueText = (value: number) => unit === "kg" ? (Math.round(value * 10) / 10).toFixed(1) : String(Math.round(value));
-  const enoughForTrend = values.length >= 3;
-  return <article className="trend-sparkline"><div className="trend-sparkline-title"><div><b>{label} 7 日平均</b><strong>{average === null ? "—" : valueText(average)} <small>{unit}</small></strong></div>{target !== undefined && <span>目標 {valueText(target)} {unit}</span>}</div>{enoughForTrend ? <><svg viewBox="0 0 350 100" role="img" aria-label={`${label}最近 7 天趨勢`}><path className="spark-grid" d="M14 12H336M14 50H336M14 88H336" />{target !== undefined && <path className="spark-target" d={`M14 ${y(target).toFixed(1)}H336`} />}<path className="spark-line" d={path} />{points.map((point, index) => point.value === null ? null : <circle key={point.date} className="spark-dot" cx={x(index)} cy={y(point.value)} r="3.1" />)}</svg><div className="spark-labels">{points.map(point => <span key={point.date}>{point.date.slice(8)}<b>{point.value === null ? "—" : valueText(point.value)}</b></span>)}</div></> : <p className="spark-empty">{values.length ? `已有 ${values.length} 筆${label}；累積至 3 筆後顯示走勢` : `尚無${label}紀錄`}</p>}</article>;
+  const enoughForTrend = values.length >= (connectGaps ? 2 : 3);
+  return <article className="trend-sparkline"><div className="trend-sparkline-title"><div><b>{label} 7 日平均</b><strong>{average === null ? "—" : valueText(average)} <small>{unit}</small></strong></div>{target !== undefined && <span>目標 {valueText(target)} {unit}</span>}</div>{enoughForTrend ? <><svg viewBox="0 0 350 100" role="img" aria-label={`${label}最近 7 天趨勢`}><path className="spark-grid" d="M14 12H336M14 50H336M14 88H336" />{target !== undefined && <path className="spark-target" d={`M14 ${y(target).toFixed(1)}H336`} />}<path className="spark-line" d={path} />{points.map((point, index) => point.value === null ? null : <circle key={point.date} className="spark-dot" cx={x(index)} cy={y(point.value)} r="3.1" />)}</svg><div className="spark-labels">{points.map(point => <span key={point.date}>{point.date.slice(8)}<b>{point.value === null ? "—" : valueText(point.value)}</b></span>)}</div></> : <p className="spark-empty">{values.length ? `已有 ${values.length} 筆${label}；累積至 ${connectGaps ? 2 : 3} 筆後顯示走勢` : `尚無${label}紀錄`}</p>}</article>;
 }
 function GoalProgress({ label, value, total }: { label: string; value: number; total: number }) { return <article><div><b>{label}</b><span>{value} / {total} 天</span></div><div className="goal-meter"><i style={{ width: `${total ? value / total * 100 : 0}%` }} /></div></article>; }
 function TargetsSettings({ initial, save }: { initial: HealthTargets; save: (targets: HealthTargets) => Promise<void> }) {

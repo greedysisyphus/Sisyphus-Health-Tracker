@@ -1,12 +1,13 @@
 import { collection, deleteDoc, doc, getDoc, getDocs, increment, limit, orderBy, query, runTransaction, serverTimestamp, setDoc } from "firebase/firestore";
 import { db } from "../lib/firebase";
-import { calculateDailyNutrition, normalizeFoodRecord, type FoodEntry, type Nutrition } from "../lib/nutrition";
+import { calculateDailyNutrition, emptyNutrition, normalizeFoodRecord, type FoodEntry, type Nutrition } from "../lib/nutrition";
 import type { BodyLog, DailyLog } from "../types/models";
 
 const dailyPath = (userId: string, date: string) => `users/${userId}/dailyLogs/${date}`;
 const hydration = (value: unknown) => typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
 
 export type DailyOverview = { date: string; waterMl: number; entries: FoodEntry[]; total: Nutrition; weightKg?: number; steps?: number };
+export type BodyLogSummary = { date: string; weightKg?: number; steps?: number; sleepHours?: number };
 
 export async function listDailyEntries(userId: string, date: string): Promise<FoodEntry[]> {
   if (!db) return [];
@@ -72,14 +73,65 @@ export async function saveBodyLog(userId: string, bodyLog: Omit<BodyLog, "create
   await setDoc(doc(db, `users/${userId}/bodyLogs/${bodyLog.date}`), { ...bodyLog, updatedAt: serverTimestamp(), createdAt: serverTimestamp() }, { merge: true });
 }
 
+/** Latest body logs, including weight-only days that may not have a dailyLog. */
+export async function listBodyLogs(userId: string, count = 120): Promise<BodyLogSummary[]> {
+  if (!db) return [];
+  const snapshot = await getDocs(query(collection(db, `users/${userId}/bodyLogs`), orderBy("date", "desc"), limit(count)));
+  return snapshot.docs.map(item => {
+    const data = item.data() as BodyLog;
+    return {
+      date: typeof data.date === "string" ? data.date : item.id,
+      ...(typeof data.weightKg === "number" ? { weightKg: data.weightKg } : {}),
+      ...(typeof data.steps === "number" ? { steps: data.steps } : {}),
+      ...(typeof data.sleepHours === "number" ? { sleepHours: data.sleepHours } : {}),
+    };
+  });
+}
+
+/**
+ * Merge dailyLogs with bodyLogs so sparse weight entries still appear in trends
+ * even when that calendar day has no food or water log.
+ */
 export async function listDailyOverviews(userId: string, count = 30): Promise<DailyOverview[]> {
   if (!db) return [];
-  const daily = await getDocs(query(collection(db, `users/${userId}/dailyLogs`), orderBy("date", "desc"), limit(count)));
-  return Promise.all(daily.docs.map(async item => {
+  const bodyLimit = Math.max(count, 120);
+  const [daily, bodies] = await Promise.all([
+    getDocs(query(collection(db, `users/${userId}/dailyLogs`), orderBy("date", "desc"), limit(count))),
+    listBodyLogs(userId, bodyLimit),
+  ]);
+  const bodyByDate = new Map(bodies.map(body => [body.date, body]));
+  const overviewByDate = new Map<string, DailyOverview>();
+
+  await Promise.all(daily.docs.map(async item => {
     const data = item.data() as DailyLog;
-    const [entries, body] = await Promise.all([listDailyEntries(userId, data.date), getBodyLog(userId, data.date)]);
-    return { date: data.date, waterMl: data.waterMl ?? 0, entries, total: calculateDailyNutrition(entries), weightKg: body?.weightKg, steps: body?.steps };
+    const entries = await listDailyEntries(userId, data.date);
+    const body = bodyByDate.get(data.date);
+    overviewByDate.set(data.date, {
+      date: data.date,
+      waterMl: data.waterMl ?? 0,
+      entries,
+      total: calculateDailyNutrition(entries),
+      weightKg: body?.weightKg ?? data.weightKg,
+      steps: body?.steps ?? data.steps,
+    });
   }));
+
+  for (const body of bodies) {
+    if (overviewByDate.has(body.date)) continue;
+    if (body.weightKg === undefined && body.steps === undefined) continue;
+    overviewByDate.set(body.date, {
+      date: body.date,
+      waterMl: 0,
+      entries: [],
+      total: emptyNutrition(),
+      weightKg: body.weightKg,
+      steps: body.steps,
+    });
+  }
+
+  return [...overviewByDate.values()]
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .slice(0, bodyLimit);
 }
 
 export type SavedFoodSummary = { id: string; name: string; brand: string | null; category: string | null; servingWeightG: number | null; hydrationMlPerServing: number; nutrition: Nutrition; favorite?: boolean; useCount: number; notes: string | null };
