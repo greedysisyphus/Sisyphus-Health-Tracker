@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calculateDailyNutrition, calculateHydrationSummary, calculateNutritionByPortion, calculateRemainingCalories, calculateSevenDayAverage, getWeekRange, normalizeFoodRecord } from "../lib/nutrition";
+import { calculateDailyNutrition, calculateHydrationSummary, calculateNutritionByPortion, calculateRemainingCalories, calculateSevenDayAverage, categoryGroupOf, getWeekRange, isDrinkCategory, normalizeFoodRecord } from "../lib/nutrition";
 
 describe("nutrition utilities", () => {
   it("scales all nutrients by servings", () => expect(calculateNutritionByPortion({ caloriesKcal: 200, proteinG: 20, carbsG: 10, fatG: 5, sugarG: 1, fiberG: 2, saturatedFatG: 1, transFatG: null, sodiumMg: 200, potassiumMg: null, cholesterolMg: null, caffeineMg: 0 }, 1.5)).toMatchObject({ caloriesKcal: 300, proteinG: 30, fatG: 7.5 }));
@@ -19,5 +19,16 @@ describe("nutrition utilities", () => {
   it("scales nutrition by the consumed percentage", () => {
     const entry = normalizeFoodRecord({ id: "meal", name: "餐盒", servings: 1, consumedPercent: 50, caloriesKcal: 600, proteinG: 40 });
     expect(calculateDailyNutrition([entry])).toMatchObject({ caloriesKcal: 300, proteinG: 20 });
+  });
+  it("maps fine categories into drink/food/other groups", () => {
+    expect(categoryGroupOf("飲料")).toBe("drink");
+    expect(categoryGroupOf("咖啡茶飲")).toBe("drink");
+    expect(categoryGroupOf("乳飲")).toBe("drink");
+    expect(categoryGroupOf("主食")).toBe("food");
+    expect(categoryGroupOf("餐盒")).toBe("food");
+    expect(categoryGroupOf(null)).toBe("other");
+    expect(categoryGroupOf("其他", 330)).toBe("drink");
+    expect(isDrinkCategory("肉類")).toBe(false);
+    expect(isDrinkCategory(null, 400)).toBe(true);
   });
 });

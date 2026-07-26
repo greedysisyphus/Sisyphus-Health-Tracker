@@ -3,7 +3,7 @@
 import { onAuthStateChanged, signInWithPopup, signOut, type User } from "firebase/auth";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { auth, googleProvider, hasFirebaseConfig } from "../lib/firebase";
-import { calculateDailyNutrition, calculateHydrationSummary, calculateSevenDayAverage, emptyNutrition, foodCategories, formatLocalDate, formatNutrition, meals, parseNonNegativeNumber, totalForEntry, type FoodEntry, type MealType, type Nutrition } from "../lib/nutrition";
+import { calculateDailyNutrition, calculateHydrationSummary, calculateSevenDayAverage, categoryGroupOf, emptyNutrition, foodCategoryGroupLabel, foodCategoryGroups, formatLocalDate, formatNutrition, isDrinkCategory, meals, parseNonNegativeNumber, totalForEntry, type FoodCategoryGroupId, type FoodEntry, type MealType, type Nutrition } from "../lib/nutrition";
 import { buildWeightTrendChart, collectWeightSamples } from "../lib/weight-trend";
 import { getBodyLog, getDailyLog, getUserProfile, listDailyEntries, listDailyOverviews, listFoods, mergeSavedFoodDuplicates, removeEntry, removeSavedFood, saveBodyLog, saveEntry, saveHealthTargets, saveSavedFood, saveWater, type DailyOverview, type SavedFoodInput, type SavedFoodSummary } from "../services/health-service";
 
@@ -89,7 +89,7 @@ export default function Home() {
     try {
       const hydrationMl = food.hydrationMlPerServing;
       await saveEntry(user.uid, date, {
-        id: crypto.randomUUID(), name: food.name, brand: food.brand, category: food.category, mealType: food.category === "飲料" || hydrationMl > 0 ? "飲料" : "點心", servings: 1, consumedPercent: 100,
+        id: crypto.randomUUID(), name: food.name, brand: food.brand, category: food.category, mealType: isDrinkCategory(food.category, hydrationMl) || hydrationMl > 0 ? "飲料" : "點心", servings: 1, consumedPercent: 100,
         servingWeightG: food.servingWeightG, ...food.nutrition, hydrationMl, time: nowTime(), notes: food.notes, source: "database", confidence: "high", sourceFoodId: food.id,
       });
       await loadDaily();
@@ -385,23 +385,124 @@ const duplicateFoodGroups = (foods: SavedFoodSummary[]): DuplicateFoodGroup[] =>
 };
 function FoodLibrary({ date, foods, add, quickAdd, edit, remove, mergeDuplicates, applySuggestedHydration }: { date: string; foods: SavedFoodSummary[]; add: () => void; quickAdd: (food: SavedFoodSummary, mealType: MealType) => Promise<boolean>; edit: (food: SavedFoodInput) => void; remove: (id: string) => Promise<void>; mergeDuplicates: (foodIds: string[]) => Promise<void>; applySuggestedHydration: (food: SavedFoodSummary, hydrationMl: number) => Promise<void> }) {
   const [query, setQuery] = useState("");
-  const [showDrinksOnly, setShowDrinksOnly] = useState(false);
+  const [groupFilter, setGroupFilter] = useState<FoodCategoryGroupId>("all");
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [groupToMerge, setGroupToMerge] = useState<DuplicateFoodGroup | null>(null);
   const [merging, setMerging] = useState(false);
   const [foodToAdd, setFoodToAdd] = useState<SavedFoodSummary | null>(null);
   const [adding, setAdding] = useState(false);
-  const visible = foods.filter(food => `${food.name} ${food.brand ?? ""} ${food.category ?? ""}`.toLowerCase().includes(query.toLowerCase())).filter(food => !showDrinksOnly || food.category === "飲料" || hydrationSuggestionFor(food) !== null || food.hydrationMlPerServing > 0);
+
+  const annotated = useMemo(() => foods.map(food => ({
+    food,
+    group: categoryGroupOf(food.category, food.hydrationMlPerServing),
+    categoryLabel: food.category?.trim() || "未分類",
+  })), [foods]);
+
+  const groupCounts = useMemo(() => {
+    const counts: Record<FoodCategoryGroupId, number> = { all: annotated.length, drink: 0, food: 0, other: 0 };
+    annotated.forEach(item => { counts[item.group] += 1; });
+    return counts;
+  }, [annotated]);
+
+  const categoryOptions = useMemo(() => {
+    const source = groupFilter === "all" ? annotated : annotated.filter(item => item.group === groupFilter);
+    const counts = new Map<string, number>();
+    source.forEach(item => counts.set(item.categoryLabel, (counts.get(item.categoryLabel) ?? 0) + 1));
+    return [...counts.entries()].sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0], "zh-TW"));
+  }, [annotated, groupFilter]);
+
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return annotated.filter(item => {
+      if (groupFilter !== "all" && item.group !== groupFilter) return false;
+      if (categoryFilter !== "all" && item.categoryLabel !== categoryFilter) return false;
+      if (!q) return true;
+      const haystack = `${item.food.name} ${item.food.brand ?? ""} ${item.categoryLabel} ${foodCategoryGroupLabel(item.group)}`.toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [annotated, categoryFilter, groupFilter, query]);
+
+  const groupedVisible = useMemo(() => {
+    const map = new Map<string, typeof visible>();
+    visible.forEach(item => {
+      const key = `${item.group}:${item.categoryLabel}`;
+      map.set(key, [...(map.get(key) ?? []), item]);
+    });
+    return [...map.entries()]
+      .map(([key, items]) => ({
+        key,
+        group: items[0].group,
+        categoryLabel: items[0].categoryLabel,
+        items: items.sort((left, right) => left.food.name.localeCompare(right.food.name, "zh-TW")),
+      }))
+      .sort((left, right) => {
+        const groupOrder = { drink: 0, food: 1, other: 2 } as const;
+        return groupOrder[left.group] - groupOrder[right.group] || left.categoryLabel.localeCompare(right.categoryLabel, "zh-TW");
+      });
+  }, [visible]);
+
   const missingHydration = foods.filter(food => food.hydrationMlPerServing === 0 && hydrationSuggestionFor(food) !== null);
   const duplicates = useMemo(() => duplicateFoodGroups(foods), [foods]);
   const merge = async () => { if (!groupToMerge) return; setMerging(true); try { await mergeDuplicates(groupToMerge.foods.map(food => food.id)); setGroupToMerge(null); } finally { setMerging(false); } };
   const addToMeal = async (mealType: MealType) => { if (!foodToAdd) return; setAdding(true); try { if (await quickAdd(foodToAdd, mealType)) setFoodToAdd(null); } finally { setAdding(false); } };
-  const startQuickAdd = (food: SavedFoodSummary) => { if (food.category === "飲料") void quickAdd(food, "飲料"); else setFoodToAdd(food); };
+  const startQuickAdd = (food: SavedFoodSummary) => { if (isDrinkCategory(food.category, food.hydrationMlPerServing)) void quickAdd(food, "飲料"); else setFoodToAdd(food); };
+  const selectGroup = (next: FoodCategoryGroupId) => { setGroupFilter(next); setCategoryFilter("all"); };
+
   return <>
-    <header><div><p className="eyebrow">MY FOODS</p><h1>常用食物，慢慢累積。</h1><p className="muted">可新增、修改、刪除，並在新增紀錄時套用。</p></div><button className="primary" onClick={add}>＋ 新增食物</button></header>
+    <header><div><p className="eyebrow">MY FOODS</p><h1>常用食物，慢慢累積。</h1><p className="muted">可依飲品類／食物類瀏覽，也可新增、修改、刪除並在新增紀錄時套用。</p></div><button className="primary" onClick={add}>＋ 新增食物</button></header>
     {missingHydration.length > 0 && <section className="hydration-reminder"><b>有 {missingHydration.length} 項常用飲品尚未設定水分</b><p>套用後，手動與 Hermes 登記都會自動計入每日水分。</p><div>{missingHydration.map(food => { const suggestion = hydrationSuggestionFor(food); return suggestion === null ? null : <button key={food.id} onClick={() => void applySuggestedHydration(food, suggestion)}>設定「{food.name}」為 {suggestion} ml</button>; })}</div></section>}
     {duplicates.length > 0 && <section className="duplicate-reminder"><b>發現 {duplicates.reduce((total, group) => total + group.foods.length - 1, 0)} 筆重複常用食物</b><p>合併時會優先保留品牌資料完整、使用次數較高的一筆；每日飲食紀錄不受影響。</p><div>{duplicates.map(group => { const lead = [...group.foods].sort((left, right) => Number(Boolean(right.brand)) - Number(Boolean(left.brand)) || right.useCount - left.useCount)[0]; return <button key={group.key} onClick={() => setGroupToMerge(group)}>合併「{lead.name}」{lead.brand ? `（${lead.brand}）` : ""}共 {group.foods.length} 筆</button>; })}</div></section>}
-    <div className="library-toolbar"><input className="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="搜尋名稱、品牌或分類" /><button className={showDrinksOnly ? "active" : ""} onClick={() => setShowDrinksOnly(!showDrinksOnly)}>飲品</button></div>
-    <section className="food-library">{visible.length ? visible.map(food => <article key={food.id}><div className="food-icon"><FoodMark /></div><div><b>{food.name}</b><p>{food.brand ? `${food.brand} · ` : ""}{food.category ?? "未分類"} · P {formatNutrition(food.nutrition.proteinG, "g")}{food.hydrationMlPerServing > 0 ? ` · 水分 ${Math.round(food.hydrationMlPerServing)} ml` : ""}</p></div><span>{formatNutrition(food.nutrition.caloriesKcal, "kcal")}</span><div className="food-actions"><button className="add-today" onClick={() => startQuickAdd(food)}>{date === formatLocalDate(new Date()) ? "＋今天" : "＋加入"}</button><button onClick={() => edit(food)}>編輯</button><button aria-label={`刪除 ${food.name}`} onClick={() => void remove(food.id)}>×</button></div></article>) : <p className="empty">尚無符合的常用食物。</p>}</section>
+    <div className="library-toolbar">
+      <input className="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="搜尋名稱、品牌或分類" />
+    </div>
+    <div className="library-group-tabs" role="tablist" aria-label="常用食物大分類">
+      {([
+        { id: "all" as const, label: "全部" },
+        { id: "drink" as const, label: "飲品類" },
+        { id: "food" as const, label: "食物類" },
+        { id: "other" as const, label: "其他" },
+      ]).map(tab => (
+        <button key={tab.id} type="button" role="tab" aria-selected={groupFilter === tab.id} className={groupFilter === tab.id ? "active" : ""} onClick={() => selectGroup(tab.id)}>
+          {tab.label}<small>{groupCounts[tab.id]}</small>
+        </button>
+      ))}
+    </div>
+    {categoryOptions.length > 0 && (
+      <div className="library-category-chips" aria-label="細分類篩選">
+        <button type="button" className={categoryFilter === "all" ? "active" : ""} onClick={() => setCategoryFilter("all")}>全部細類</button>
+        {categoryOptions.map(([label, count]) => (
+          <button key={label} type="button" className={categoryFilter === label ? "active" : ""} onClick={() => setCategoryFilter(label)}>
+            {label}<small>{count}</small>
+          </button>
+        ))}
+      </div>
+    )}
+    <section className="food-library">
+      {groupedVisible.length ? groupedVisible.map(section => (
+        <div className="food-library-group" key={section.key}>
+          <div className="food-library-group-heading">
+            <b>{foodCategoryGroupLabel(section.group)}</b>
+            <span>{section.categoryLabel}</span>
+            <small>{section.items.length}</small>
+          </div>
+          {section.items.map(({ food }) => (
+            <article key={food.id}>
+              <div className="food-icon"><FoodMark /></div>
+              <div>
+                <b>{food.name}</b>
+                <p>{food.brand ? `${food.brand} · ` : ""}{foodCategoryGroupLabel(categoryGroupOf(food.category, food.hydrationMlPerServing))}／{food.category ?? "未分類"} · P {formatNutrition(food.nutrition.proteinG, "g")}{food.hydrationMlPerServing > 0 ? ` · 水分 ${Math.round(food.hydrationMlPerServing)} ml` : ""}</p>
+              </div>
+              <span>{formatNutrition(food.nutrition.caloriesKcal, "kcal")}</span>
+              <div className="food-actions">
+                <button className="add-today" onClick={() => startQuickAdd(food)}>{date === formatLocalDate(new Date()) ? "＋今天" : "＋加入"}</button>
+                <button onClick={() => edit(food)}>編輯</button>
+                <button aria-label={`刪除 ${food.name}`} onClick={() => void remove(food.id)}>×</button>
+              </div>
+            </article>
+          ))}
+        </div>
+      )) : <p className="empty">尚無符合的常用食物。</p>}
+    </section>
     {groupToMerge && <Sheet title="合併重複常用食物" close={() => !merging && setGroupToMerge(null)}><p className="muted">以下 {groupToMerge.foods.length} 筆名稱相同，且沒有品牌衝突。確認後會優先保留品牌資料完整、使用次數較高的一筆，並刪除其餘常用食物。</p><ul className="duplicate-list">{groupToMerge.foods.map(food => <li key={food.id}><b>{food.name}</b><span>{food.brand ?? "未填品牌"} · 使用 {food.useCount} 次</span></li>)}</ul><button className="save-btn" onClick={() => void merge()} disabled={merging}>{merging ? "合併中…" : `確認合併 ${groupToMerge.foods.length} 筆食物`}</button></Sheet>}
     {foodToAdd && <Sheet title={`加入${dateLabel(date)}`} close={() => !adding && setFoodToAdd(null)}><p className="muted">「{foodToAdd.name}」要記錄在哪一餐？</p><div className="meal-choices">{(["早餐", "午餐", "晚餐", "點心", "宵夜", "其他"] as MealType[]).map(meal => <button key={meal} className="parse-btn" disabled={adding} onClick={() => void addToMeal(meal)}>{meal}</button>)}</div></Sheet>}
   </>;
@@ -431,7 +532,7 @@ function FoodFields({ draft, setDraft, includeMeal, savedFoods, applySaved, hydr
   };
   const input = (item: { key: NumericKey; label: string; optional?: boolean }) => <label key={item.key}>{item.label}<input type="number" inputMode="decimal" min="0" step="any" value={draft.values[item.key]} onChange={event => updateValue(item.key, event.target.value)} placeholder={item.optional ? "選填" : "0"} /></label>;
   return <>
-    <section className="form-section"><h3>基本資料</h3>{savedFoods && <label>套用常用食物<select value="" onChange={event => { const food = savedFoods.find(item => item.id === event.target.value); if (food) applySaved?.(food); }}><option value="">選擇後自動填入</option>{savedFoods.map(food => <option key={food.id} value={food.id}>{food.name}{food.brand ? ` · ${food.brand}` : ""}</option>)}</select></label>}<div className="form-grid"><label>食物名稱<input value={draft.name} onChange={event => setDraft({ ...draft, name: event.target.value })} /></label><label>品牌（選填）<input value={draft.brand} onChange={event => setDraft({ ...draft, brand: event.target.value })} /></label><label>食物分類<select value={draft.category} onChange={event => setDraft({ ...draft, category: event.target.value })}><option value="">未分類</option>{foodCategories.map(category => <option key={category}>{category}</option>)}</select></label>{includeMeal && <label>餐次<select value={draft.mealType} onChange={event => setDraft({ ...draft, mealType: event.target.value as MealType })}>{meals.map(meal => <option key={meal}>{meal}</option>)}</select></label>}<label>食用份數<input type="number" inputMode="decimal" min="0.1" step="any" value={draft.values.servings} onChange={event => updateServings(event.target.value)} /></label>{includeMeal && <label>吃完比例<select value={draft.values.consumedPercent} onChange={event => updateConsumedPercent(event.target.value)}>{[100, 75, 50, 25].map(percent => <option key={percent} value={percent}>{percent}%</option>)}</select></label>}<label>每份重量 g（選填）<input type="number" inputMode="decimal" min="0" step="any" value={draft.values.servingWeightG} onChange={event => updateValue("servingWeightG", event.target.value)} /></label><label>{hydrationLabel}<input type="number" inputMode="decimal" min="0" step="any" value={draft.values.hydrationMl} onChange={event => updateValue("hydrationMl", event.target.value)} placeholder="0" /></label></div></section>
+    <section className="form-section"><h3>基本資料</h3>{savedFoods && <label>套用常用食物<select value="" onChange={event => { const food = savedFoods.find(item => item.id === event.target.value); if (food) applySaved?.(food); }}><option value="">選擇後自動填入</option>{savedFoods.map(food => <option key={food.id} value={food.id}>{food.name}{food.brand ? ` · ${food.brand}` : ""}</option>)}</select></label>}<div className="form-grid"><label>食物名稱<input value={draft.name} onChange={event => setDraft({ ...draft, name: event.target.value })} /></label><label>品牌（選填）<input value={draft.brand} onChange={event => setDraft({ ...draft, brand: event.target.value })} /></label><label>食物分類<select value={draft.category} onChange={event => setDraft({ ...draft, category: event.target.value })}><option value="">未分類</option>{foodCategoryGroups.map(group => <optgroup key={group.id} label={group.label}>{group.categories.map(category => <option key={category} value={category}>{category}</option>)}</optgroup>)}</select></label>{includeMeal && <label>餐次<select value={draft.mealType} onChange={event => setDraft({ ...draft, mealType: event.target.value as MealType })}>{meals.map(meal => <option key={meal}>{meal}</option>)}</select></label>}<label>食用份數<input type="number" inputMode="decimal" min="0.1" step="any" value={draft.values.servings} onChange={event => updateServings(event.target.value)} /></label>{includeMeal && <label>吃完比例<select value={draft.values.consumedPercent} onChange={event => updateConsumedPercent(event.target.value)}>{[100, 75, 50, 25].map(percent => <option key={percent} value={percent}>{percent}%</option>)}</select></label>}<label>每份重量 g（選填）<input type="number" inputMode="decimal" min="0" step="any" value={draft.values.servingWeightG} onChange={event => updateValue("servingWeightG", event.target.value)} /></label><label>{hydrationLabel}<input type="number" inputMode="decimal" min="0" step="any" value={draft.values.hydrationMl} onChange={event => updateValue("hydrationMl", event.target.value)} placeholder="0" /></label></div></section>
     <section className="form-section"><h3>主要營養 <small>每份</small></h3><div className="form-grid">{primaryKeys.map(input)}</div></section>
     <section className="form-section"><button className="advanced-toggle" type="button" onClick={() => setAdvanced(!advanced)}>其他營養 {advanced ? "收合" : "展開"}</button>{advanced && <div className="form-grid">{otherKeys.map(input)}</div>}</section>
     <section className="form-section"><h3>備註</h3><textarea value={draft.notes} onChange={event => setDraft({ ...draft, notes: event.target.value })} placeholder="例如：吃完、包裝標示、餐點估算依據" /></section>
