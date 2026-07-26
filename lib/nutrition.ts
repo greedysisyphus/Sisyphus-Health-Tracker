@@ -45,7 +45,7 @@ export const meals: MealType[] = ["早餐", "午餐", "晚餐", "點心", "飲�
 
 /** Fine-grained food/drink labels stored on entries and saved foods. */
 export const foodCategories = [
-  "主食", "肉類", "海鮮", "蛋類", "乳製品", "豆類", "蔬菜", "水果", "堅果",
+  "主食", "飯糰類", "肉類", "雞胸類", "海鮮", "蛋類", "乳製品", "豆類", "蔬菜", "水果", "堅果",
   "飲料", "咖啡茶飲", "乳飲",
   "零食", "餐盒", "醬料", "其他",
 ] as const;
@@ -62,25 +62,98 @@ export const foodCategoryGroups: {
   {
     id: "food",
     label: "食物類",
-    categories: ["主食", "肉類", "海鮮", "蛋類", "乳製品", "豆類", "蔬菜", "水果", "堅果", "零食", "餐盒", "醬料"],
+    categories: ["主食", "飯糰類", "肉類", "雞胸類", "海鮮", "蛋類", "乳製品", "豆類", "蔬菜", "水果", "堅果", "零食", "餐盒", "醬料"],
   },
   { id: "other", label: "其他", categories: ["其他"] },
 ];
 
 const drinkCategorySet = new Set<string>(foodCategoryGroups.find(group => group.id === "drink")!.categories);
 const foodCategorySet = new Set<string>(foodCategoryGroups.find(group => group.id === "food")!.categories);
+const canonicalCategorySet = new Set<string>(foodCategories);
+
+/** Free-form / English AI labels → canonical Chinese categories. */
+const categoryAliases: Record<string, FoodCategory> = {
+  // English AI import enums
+  staple: "主食",
+  meat: "肉類",
+  seafood: "海鮮",
+  egg: "蛋類",
+  vegetable: "蔬菜",
+  fruit: "水果",
+  dairy: "乳製品",
+  soy: "豆類",
+  snack: "零食",
+  dessert: "零食",
+  drink: "飲料",
+  coffee: "咖啡茶飲",
+  restaurant_meal: "餐盒",
+  convenience_store: "餐盒",
+  other: "其他",
+  // Chinese free-form / Hermes tags that used to litter the chip bar
+  雞肉: "雞胸類",
+  鸡肉: "雞胸類",
+  雞胸: "雞胸類",
+  鸡胸: "雞胸類",
+  雞胸肉: "雞胸類",
+  鸡胸肉: "雞胸類",
+  雞柳: "雞胸類",
+  舒肥雞: "雞胸類",
+  雞胸類: "雞胸類",
+  飯糰: "飯糰類",
+  饭团: "飯糰類",
+  三角飯糰: "飯糰類",
+  御飯糰: "飯糰類",
+  飯團: "飯糰類",
+  飯糰類: "飯糰類",
+  咖啡: "咖啡茶飲",
+  茶: "咖啡茶飲",
+  豆漿: "乳飲",
+  牛奶: "乳飲",
+  優格: "乳製品",
+  優酪乳: "乳飲",
+};
+
+const compactKey = (value: string) => value.trim().toLowerCase().replace(/[\s_\-／/·•]+/g, "");
+
+/**
+ * Collapse free-form tags (雞肉/雞胸肉/meat…) into one canonical category.
+ * Unknown free-form labels become 其他 so the chip bar stays clean.
+ */
+export function normalizeFoodCategory(category: string | null | undefined, name = ""): FoodCategory | null {
+  const raw = typeof category === "string" ? category.trim() : "";
+  const foodName = typeof name === "string" ? name.trim() : "";
+  if (!raw && !foodName) return null;
+
+  const haystack = `${raw} ${foodName}`;
+  // Name/signal wins for specialty shelves before coarse AI enums like "meat".
+  if (/雞胸|鸡胸|chicken\s*breast|舒肥雞|雞柳/i.test(haystack)) return "雞胸類";
+  if (/飯糰|饭团|飯團|onigiri|御飯糰|三角飯/i.test(haystack)) return "飯糰類";
+
+  if (raw && canonicalCategorySet.has(raw)) return raw as FoodCategory;
+
+  const alias = raw ? categoryAliases[raw] ?? categoryAliases[compactKey(raw)] : undefined;
+  if (alias) return alias;
+
+  if (/咖啡|美式|拿鐵|latte|espresso|茶飲|紅茶|綠茶|烏龍/i.test(haystack)) return "咖啡茶飲";
+  if (/豆漿|豆奶|牛乳|鮮奶|牛奶|優酪乳|優格飲/i.test(haystack)) return "乳飲";
+  if (/可樂|汽水|氣泡水|飲料|果汁|運動飲料/i.test(haystack) && !/醬|料/.test(haystack)) return "飲料";
+
+  // Free-form leftovers must not create new chips.
+  return raw ? "其他" : null;
+}
 
 /** Map a stored category (+ optional hydration) into 飲品類 / 食物類 / 其他. */
-export function categoryGroupOf(category: string | null | undefined, hydrationMl = 0): Exclude<FoodCategoryGroupId, "all"> {
-  if (category && drinkCategorySet.has(category)) return "drink";
-  if (category && foodCategorySet.has(category)) return "food";
+export function categoryGroupOf(category: string | null | undefined, hydrationMl = 0, name = ""): Exclude<FoodCategoryGroupId, "all"> {
+  const normalized = normalizeFoodCategory(category, name);
+  if (normalized && drinkCategorySet.has(normalized)) return "drink";
+  if (normalized && foodCategorySet.has(normalized)) return "food";
   // Legacy drinks often only have hydration and no category / 其他.
-  if (hydrationMl > 0 && (!category || category === "其他")) return "drink";
+  if (hydrationMl > 0 && (!normalized || normalized === "其他")) return "drink";
   return "other";
 }
 
-export function isDrinkCategory(category: string | null | undefined, hydrationMl = 0): boolean {
-  return categoryGroupOf(category, hydrationMl) === "drink";
+export function isDrinkCategory(category: string | null | undefined, hydrationMl = 0, name = ""): boolean {
+  return categoryGroupOf(category, hydrationMl, name) === "drink";
 }
 
 export function foodCategoryGroupLabel(group: Exclude<FoodCategoryGroupId, "all">): string {
@@ -100,12 +173,14 @@ export function normalizeFoodRecord(raw: Record<string, unknown>, id?: string): 
   const oldUnit = typeof raw.unit === "string" ? raw.unit : "";
   const oldPortion = numberOr(raw.portion, 1);
   const isCanonical = raw.servings !== undefined || raw.caloriesKcal !== undefined;
+  const name = textOrNull(raw.name) ?? "未命名食物";
+  const category = normalizeFoodCategory(textOrNull(raw.category), name);
   return {
     id: typeof raw.id === "string" ? raw.id : id ?? crypto.randomUUID(),
     ...(typeof raw.date === "string" ? { date: raw.date } : {}),
-    name: textOrNull(raw.name) ?? "未命名食物",
+    name,
     brand: textOrNull(raw.brand),
-    category: textOrNull(raw.category),
+    category,
     mealType: (raw.mealType && meals.includes(raw.mealType as MealType) ? raw.mealType : mealType) as MealType,
     // Legacy entries store their final consumed values. Treat them as one serving.
     servings: isCanonical ? Math.max(numberOr(raw.servings, 1), 0.1) : 1,

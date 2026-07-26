@@ -3,7 +3,7 @@
 import { onAuthStateChanged, signInWithPopup, signOut, type User } from "firebase/auth";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { auth, googleProvider, hasFirebaseConfig } from "../lib/firebase";
-import { calculateDailyNutrition, calculateHydrationSummary, calculateSevenDayAverage, categoryGroupOf, emptyNutrition, foodCategoryGroupLabel, foodCategoryGroups, formatLocalDate, formatNutrition, isDrinkCategory, meals, parseNonNegativeNumber, totalForEntry, type FoodCategoryGroupId, type FoodEntry, type MealType, type Nutrition } from "../lib/nutrition";
+import { calculateDailyNutrition, calculateHydrationSummary, calculateSevenDayAverage, categoryGroupOf, emptyNutrition, foodCategoryGroupLabel, foodCategoryGroups, formatLocalDate, formatNutrition, isDrinkCategory, meals, normalizeFoodCategory, parseNonNegativeNumber, totalForEntry, type FoodCategoryGroupId, type FoodEntry, type MealType, type Nutrition } from "../lib/nutrition";
 import { buildWeightTrendChart, collectWeightSamples } from "../lib/weight-trend";
 import { getBodyLog, getDailyLog, getUserProfile, listDailyEntries, listDailyOverviews, listFoods, mergeSavedFoodDuplicates, removeEntry, removeSavedFood, saveBodyLog, saveEntry, saveHealthTargets, saveSavedFood, saveWater, type DailyOverview, type SavedFoodInput, type SavedFoodSummary } from "../services/health-service";
 
@@ -89,7 +89,7 @@ export default function Home() {
     try {
       const hydrationMl = food.hydrationMlPerServing;
       await saveEntry(user.uid, date, {
-        id: crypto.randomUUID(), name: food.name, brand: food.brand, category: food.category, mealType: isDrinkCategory(food.category, hydrationMl) || hydrationMl > 0 ? "飲料" : "點心", servings: 1, consumedPercent: 100,
+        id: crypto.randomUUID(), name: food.name, brand: food.brand, category: food.category, mealType: isDrinkCategory(food.category, hydrationMl, food.name) || hydrationMl > 0 ? "飲料" : "點心", servings: 1, consumedPercent: 100,
         servingWeightG: food.servingWeightG, ...food.nutrition, hydrationMl, time: nowTime(), notes: food.notes, source: "database", confidence: "high", sourceFoodId: food.id,
       });
       await loadDaily();
@@ -126,7 +126,7 @@ export default function Home() {
       setNotice(`已合併「${result.name}」，移除 ${result.removedCount} 筆重複常用食物。`);
     } catch { setNotice("合併重複常用食物失敗，請重新整理後再試一次。"); }
   };
-  const saveAsCommon = async (entry: FoodEntry) => { await saveFood({ id: crypto.randomUUID(), name: entry.name, brand: entry.brand, category: entry.category, servingWeightG: entry.servingWeightG, hydrationMlPerServing: entry.servings > 0 ? entry.hydrationMl / entry.servings : 0, nutrition: { ...entryNutrition(entry) }, favorite: true, notes: entry.notes }); };
+  const saveAsCommon = async (entry: FoodEntry) => { await saveFood({ id: crypto.randomUUID(), name: entry.name, brand: entry.brand, category: normalizeFoodCategory(entry.category, entry.name), servingWeightG: entry.servingWeightG, hydrationMlPerServing: entry.servings > 0 ? entry.hydrationMl / entry.servings : 0, nutrition: { ...entryNutrition(entry) }, favorite: true, notes: entry.notes }); };
   const exportRecords = async (startDate: string, endDate: string) => {
     if (!user) return;
     const [days, profile] = await Promise.all([listDailyOverviews(user.uid, 365), getUserProfile(user.uid)]);
@@ -392,11 +392,14 @@ function FoodLibrary({ date, foods, add, quickAdd, edit, remove, mergeDuplicates
   const [foodToAdd, setFoodToAdd] = useState<SavedFoodSummary | null>(null);
   const [adding, setAdding] = useState(false);
 
-  const annotated = useMemo(() => foods.map(food => ({
-    food,
-    group: categoryGroupOf(food.category, food.hydrationMlPerServing),
-    categoryLabel: food.category?.trim() || "未分類",
-  })), [foods]);
+  const annotated = useMemo(() => foods.map(food => {
+    const category = normalizeFoodCategory(food.category, food.name);
+    return {
+      food: { ...food, category },
+      group: categoryGroupOf(category, food.hydrationMlPerServing, food.name),
+      categoryLabel: category ?? "未分類",
+    };
+  }), [foods]);
 
   const groupCounts = useMemo(() => {
     const counts: Record<FoodCategoryGroupId, number> = { all: annotated.length, drink: 0, food: 0, other: 0 };
@@ -445,7 +448,7 @@ function FoodLibrary({ date, foods, add, quickAdd, edit, remove, mergeDuplicates
   const duplicates = useMemo(() => duplicateFoodGroups(foods), [foods]);
   const merge = async () => { if (!groupToMerge) return; setMerging(true); try { await mergeDuplicates(groupToMerge.foods.map(food => food.id)); setGroupToMerge(null); } finally { setMerging(false); } };
   const addToMeal = async (mealType: MealType) => { if (!foodToAdd) return; setAdding(true); try { if (await quickAdd(foodToAdd, mealType)) setFoodToAdd(null); } finally { setAdding(false); } };
-  const startQuickAdd = (food: SavedFoodSummary) => { if (isDrinkCategory(food.category, food.hydrationMlPerServing)) void quickAdd(food, "飲料"); else setFoodToAdd(food); };
+  const startQuickAdd = (food: SavedFoodSummary) => { if (isDrinkCategory(food.category, food.hydrationMlPerServing, food.name)) void quickAdd(food, "飲料"); else setFoodToAdd(food); };
   const selectGroup = (next: FoodCategoryGroupId) => { setGroupFilter(next); setCategoryFilter("all"); };
 
   return <>
@@ -490,7 +493,7 @@ function FoodLibrary({ date, foods, add, quickAdd, edit, remove, mergeDuplicates
               <div className="food-icon"><FoodMark /></div>
               <div>
                 <b>{food.name}</b>
-                <p>{food.brand ? `${food.brand} · ` : ""}{foodCategoryGroupLabel(categoryGroupOf(food.category, food.hydrationMlPerServing))}／{food.category ?? "未分類"} · P {formatNutrition(food.nutrition.proteinG, "g")}{food.hydrationMlPerServing > 0 ? ` · 水分 ${Math.round(food.hydrationMlPerServing)} ml` : ""}</p>
+                <p>{food.brand ? `${food.brand} · ` : ""}{foodCategoryGroupLabel(categoryGroupOf(food.category, food.hydrationMlPerServing, food.name))}／{normalizeFoodCategory(food.category, food.name) ?? "未分類"} · P {formatNutrition(food.nutrition.proteinG, "g")}{food.hydrationMlPerServing > 0 ? ` · 水分 ${Math.round(food.hydrationMlPerServing)} ml` : ""}</p>
               </div>
               <span>{formatNutrition(food.nutrition.caloriesKcal, "kcal")}</span>
               <div className="food-actions">
@@ -512,7 +515,7 @@ type NumericKey = keyof Nutrition | "servings" | "consumedPercent" | "servingWei
 const primaryKeys: { key: NumericKey; label: string; optional?: boolean }[] = [{ key: "caloriesKcal", label: "熱量 kcal" }, { key: "proteinG", label: "蛋白質 g" }, { key: "carbsG", label: "碳水 g" }, { key: "fatG", label: "脂肪 g" }, { key: "fiberG", label: "纖維 g" }, { key: "sodiumMg", label: "鈉 mg" }];
 const otherKeys: { key: NumericKey; label: string; optional?: boolean }[] = [{ key: "sugarG", label: "糖 g" }, { key: "saturatedFatG", label: "飽和脂肪 g" }, { key: "caffeineMg", label: "咖啡因 mg" }, { key: "transFatG", label: "反式脂肪 g", optional: true }, { key: "cholesterolMg", label: "膽固醇 mg", optional: true }, { key: "potassiumMg", label: "鉀 mg", optional: true }];
 type Draft = { name: string; brand: string; category: string; mealType: MealType; notes: string; sourceFoodId: string | null; values: Record<NumericKey, string> };
-const draftFrom = (entry?: FoodEntry, saved?: SavedFoodInput): Draft => { const source = entry ?? (saved ? { ...saved, mealType: "其他" as MealType, servings: 1, consumedPercent: 100, hydrationMl: saved.hydrationMlPerServing, time: nowTime(), ...saved.nutrition } : undefined); const nutrition = source ? entryNutrition(source as FoodEntry) : emptyNutrition(); const numeric = (value: number | null | undefined) => value === null || value === undefined ? "" : String(value); return { name: source?.name ?? "", brand: source?.brand ?? "", category: source?.category ?? "", mealType: (source?.mealType ?? "點心") as MealType, notes: source?.notes ?? "", sourceFoodId: entry?.sourceFoodId ?? saved?.id ?? null, values: { caloriesKcal: numeric(nutrition.caloriesKcal), proteinG: numeric(nutrition.proteinG), carbsG: numeric(nutrition.carbsG), fatG: numeric(nutrition.fatG), fiberG: numeric(nutrition.fiberG), sugarG: numeric(nutrition.sugarG), saturatedFatG: numeric(nutrition.saturatedFatG), transFatG: numeric(nutrition.transFatG), sodiumMg: numeric(nutrition.sodiumMg), potassiumMg: numeric(nutrition.potassiumMg), cholesterolMg: numeric(nutrition.cholesterolMg), caffeineMg: numeric(nutrition.caffeineMg), servings: numeric((source as FoodEntry | undefined)?.servings ?? 1), consumedPercent: numeric((source as FoodEntry | undefined)?.consumedPercent ?? 100), servingWeightG: numeric((source as FoodEntry | undefined)?.servingWeightG ?? saved?.servingWeightG), hydrationMl: numeric((source as FoodEntry | undefined)?.hydrationMl ?? 0) } }; };
+const draftFrom = (entry?: FoodEntry, saved?: SavedFoodInput): Draft => { const source = entry ?? (saved ? { ...saved, mealType: "其他" as MealType, servings: 1, consumedPercent: 100, hydrationMl: saved.hydrationMlPerServing, time: nowTime(), ...saved.nutrition } : undefined); const nutrition = source ? entryNutrition(source as FoodEntry) : emptyNutrition(); const numeric = (value: number | null | undefined) => value === null || value === undefined ? "" : String(value); const name = source?.name ?? ""; return { name, brand: source?.brand ?? "", category: normalizeFoodCategory(source?.category, name) ?? "", mealType: (source?.mealType ?? "點心") as MealType, notes: source?.notes ?? "", sourceFoodId: entry?.sourceFoodId ?? saved?.id ?? null, values: { caloriesKcal: numeric(nutrition.caloriesKcal), proteinG: numeric(nutrition.proteinG), carbsG: numeric(nutrition.carbsG), fatG: numeric(nutrition.fatG), fiberG: numeric(nutrition.fiberG), sugarG: numeric(nutrition.sugarG), saturatedFatG: numeric(nutrition.saturatedFatG), transFatG: numeric(nutrition.transFatG), sodiumMg: numeric(nutrition.sodiumMg), potassiumMg: numeric(nutrition.potassiumMg), cholesterolMg: numeric(nutrition.cholesterolMg), caffeineMg: numeric(nutrition.caffeineMg), servings: numeric((source as FoodEntry | undefined)?.servings ?? 1), consumedPercent: numeric((source as FoodEntry | undefined)?.consumedPercent ?? 100), servingWeightG: numeric((source as FoodEntry | undefined)?.servingWeightG ?? saved?.servingWeightG), hydrationMl: numeric((source as FoodEntry | undefined)?.hydrationMl ?? 0) } }; };
 function FoodFields({ draft, setDraft, includeMeal, savedFoods, applySaved, hydrationLabel }: { draft: Draft; setDraft: (next: Draft) => void; includeMeal: boolean; savedFoods?: SavedFoodSummary[]; applySaved?: (food: SavedFoodSummary) => void; hydrationLabel: string }) {
   const [advanced, setAdvanced] = useState(false);
   const updateValue = (key: NumericKey, value: string) => setDraft({ ...draft, values: { ...draft.values, [key]: value } });
@@ -553,7 +556,7 @@ function EntryEditor({ initial, savedFoods, close, save }: { initial: FoodEntry 
         id: initial?.id ?? crypto.randomUUID(),
         name: draft.name.trim(),
         brand: draft.brand.trim() || null,
-        category: draft.category || null,
+        category: normalizeFoodCategory(draft.category, draft.name.trim()),
         mealType: draft.mealType,
         servings: parsed.servings,
         consumedPercent: parsed.consumedPercent,
@@ -593,7 +596,7 @@ function SavedFoodEditor({ initial, close, save }: { initial: SavedFoodInput | n
         id: initial?.id ?? crypto.randomUUID(),
         name: draft.name.trim(),
         brand: draft.brand.trim() || null,
-        category: draft.category || null,
+        category: normalizeFoodCategory(draft.category, draft.name.trim()),
         servingWeightG: parsed.servingWeightG,
         hydrationMlPerServing: parsed.hydrationMl,
         nutrition: parsed.nutrition,

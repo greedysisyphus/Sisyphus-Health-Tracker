@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { FoodEntry } from "./nutrition";
+import { normalizeFoodCategory, type FoodEntry } from "./nutrition";
 
 const optionalNumber = z.number().finite().min(0).nullable().optional();
 const nutritionSchema = z.object({ calories: z.number().finite().min(0), protein: z.number().finite().min(0), carbohydrates: z.number().finite().min(0), fat: z.number().finite().min(0), saturatedFat: optionalNumber, transFat: optionalNumber, fiber: optionalNumber, sugar: optionalNumber, addedSugar: optionalNumber, sodium: optionalNumber, cholesterol: optionalNumber, potassium: optionalNumber, caffeine: optionalNumber, water: optionalNumber });
@@ -7,5 +7,31 @@ export const aiImportSchema = z.object({ schemaVersion: z.literal("1.0"), import
 export type AIImportPayload = z.infer<typeof aiImportSchema>;
 export const cleanAiJson = (raw: string) => raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
 const meals = { breakfast: "早餐", lunch: "午餐", dinner: "晚餐", snack: "點心", drink: "飲料", tasting: "其他" } as const;
-export const entriesFromImport = (payload: AIImportPayload): FoodEntry[] => payload.items.map((item, index) => ({ id: `${item.name}-${index}-${crypto.randomUUID()}`, name: item.name, brand: item.brand ?? null, category: item.category ?? null, mealType: meals[payload.mealType], servings: item.quantity, consumedPercent: 100, servingWeightG: item.servingUnit === "g" ? item.servingAmount ?? null : null, caloriesKcal: item.nutrition.calories, proteinG: item.nutrition.protein, carbsG: item.nutrition.carbohydrates, fatG: item.nutrition.fat, sugarG: item.nutrition.sugar ?? 0, fiberG: item.nutrition.fiber ?? 0, saturatedFatG: item.nutrition.saturatedFat ?? 0, transFatG: item.nutrition.transFat ?? null, sodiumMg: item.nutrition.sodium ?? 0, potassiumMg: item.nutrition.potassium ?? null, cholesterolMg: item.nutrition.cholesterol ?? null, caffeineMg: item.nutrition.caffeine ?? 0, hydrationMl: item.nutrition.water ? item.nutrition.water * item.quantity : 0, time: "現在", notes: item.notes ?? null, source: item.dataSource, confidence: item.confidence }));
+export const entriesFromImport = (payload: AIImportPayload): FoodEntry[] => payload.items.map((item, index) => ({
+  id: `${item.name}-${index}-${crypto.randomUUID()}`,
+  name: item.name,
+  brand: item.brand ?? null,
+  category: normalizeFoodCategory(item.category, item.name),
+  mealType: meals[payload.mealType],
+  servings: item.quantity,
+  consumedPercent: 100,
+  servingWeightG: item.servingUnit === "g" ? item.servingAmount ?? null : null,
+  caloriesKcal: item.nutrition.calories,
+  proteinG: item.nutrition.protein,
+  carbsG: item.nutrition.carbohydrates,
+  fatG: item.nutrition.fat,
+  sugarG: item.nutrition.sugar ?? 0,
+  fiberG: item.nutrition.fiber ?? 0,
+  saturatedFatG: item.nutrition.saturatedFat ?? 0,
+  transFatG: item.nutrition.transFat ?? null,
+  sodiumMg: item.nutrition.sodium ?? 0,
+  potassiumMg: item.nutrition.potassium ?? null,
+  cholesterolMg: item.nutrition.cholesterol ?? null,
+  caffeineMg: item.nutrition.caffeine ?? 0,
+  hydrationMl: item.nutrition.water ? item.nutrition.water * item.quantity : 0,
+  time: "現在",
+  notes: item.notes ?? null,
+  source: item.dataSource,
+  confidence: item.confidence,
+}));
 export const importedTotal = (payload: AIImportPayload) => payload.items.reduce((sum, item) => ({ calories: sum.calories + item.nutrition.calories * item.quantity, protein: sum.protein + item.nutrition.protein * item.quantity, carbs: sum.carbs + item.nutrition.carbohydrates * item.quantity, fat: sum.fat + item.nutrition.fat * item.quantity }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
