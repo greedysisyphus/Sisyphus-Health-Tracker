@@ -23,15 +23,23 @@ export type FoodEntry = Nutrition & {
   category: string | null;
   mealType: MealType;
   servings: number;
+  consumedPercent: number;
   servingWeightG: number | null;
   hydrationMl: number;
   time: string;
   notes: string | null;
   source?: string;
   confidence?: string;
+  sourceFoodId?: string;
 };
 
 export type FoodRecordInput = Omit<FoodEntry, "id" | "date" | "time"> & { id?: string; time?: string };
+
+export type HydrationSummary = {
+  plainWaterMl: number;
+  beverageWaterMl: number;
+  totalWaterMl: number;
+};
 
 export const meals: MealType[] = ["早餐", "午餐", "晚餐", "點心", "飲料", "宵夜", "其他"];
 export const foodCategories = ["主食", "肉類", "海鮮", "蛋類", "乳製品", "豆類", "蔬菜", "水果", "堅果", "飲料", "零食", "餐盒", "醬料", "其他"] as const;
@@ -58,6 +66,7 @@ export function normalizeFoodRecord(raw: Record<string, unknown>, id?: string): 
     mealType: (raw.mealType && meals.includes(raw.mealType as MealType) ? raw.mealType : mealType) as MealType,
     // Legacy entries store their final consumed values. Treat them as one serving.
     servings: isCanonical ? Math.max(numberOr(raw.servings, 1), 0.1) : 1,
+    consumedPercent: Math.min(100, Math.max(0, numberOr(raw.consumedPercent, 100))),
     servingWeightG: nullableNumber(raw.servingWeightG) ?? (!isCanonical && oldUnit === "g" ? oldPortion : null),
     caloriesKcal: numberOr(raw.caloriesKcal ?? raw.calories),
     proteinG: numberOr(raw.proteinG ?? raw.protein),
@@ -76,11 +85,12 @@ export function normalizeFoodRecord(raw: Record<string, unknown>, id?: string): 
     notes: textOrNull(raw.notes),
     ...(typeof raw.source === "string" ? { source: raw.source } : {}),
     ...(typeof raw.confidence === "string" ? { confidence: raw.confidence } : {}),
+    ...(typeof raw.sourceFoodId === "string" ? { sourceFoodId: raw.sourceFoodId } : {}),
   };
 }
 
 export const totalForEntry = (entry: FoodEntry): Nutrition => {
-  const servings = Math.max(numberOr(entry.servings, 1), 0);
+  const servings = Math.max(numberOr(entry.servings, 1), 0) * Math.min(100, Math.max(0, numberOr(entry.consumedPercent, 100))) / 100;
   const value = (nutrition: number | null) => nutrition === null ? 0 : numberOr(nutrition) * servings;
   return { caloriesKcal: value(entry.caloriesKcal), proteinG: value(entry.proteinG), carbsG: value(entry.carbsG), fatG: value(entry.fatG), fiberG: value(entry.fiberG), sugarG: value(entry.sugarG), saturatedFatG: value(entry.saturatedFatG), transFatG: value(entry.transFatG), sodiumMg: value(entry.sodiumMg), potassiumMg: value(entry.potassiumMg), cholesterolMg: value(entry.cholesterolMg), caffeineMg: value(entry.caffeineMg) };
 };
@@ -94,8 +104,18 @@ export const calculateDailyNutrition = (entries: FoodEntry[]): Nutrition => entr
   };
 }, emptyNutrition());
 
+/** Splits a day's tracked water into plain water and food/drink hydration. */
+export const calculateHydrationSummary = (entries: FoodEntry[], waterMl: number): HydrationSummary => {
+  const totalWaterMl = numberOr(waterMl);
+  const recordedDrinkWater = entries.reduce((total, entry) => total + numberOr(entry.hydrationMl), 0);
+  // Older entries may have hydration recorded before it was included in daily water.
+  // Keep the displayed parts consistent with the stored daily total.
+  const beverageWaterMl = Math.min(totalWaterMl, recordedDrinkWater);
+  return { totalWaterMl, beverageWaterMl, plainWaterMl: Math.max(0, totalWaterMl - beverageWaterMl) };
+};
+
 export const calculateDailyTotals = calculateDailyNutrition;
-export const calculateNutritionByPortion = (nutrition: Nutrition, servings: number): Nutrition => totalForEntry({ id: "calculation", name: "calculation", brand: null, category: null, mealType: "其他", servings, servingWeightG: null, hydrationMl: 0, time: "", notes: null, ...nutrition });
+export const calculateNutritionByPortion = (nutrition: Nutrition, servings: number): Nutrition => totalForEntry({ id: "calculation", name: "calculation", brand: null, category: null, mealType: "其他", servings, consumedPercent: 100, servingWeightG: null, hydrationMl: 0, time: "", notes: null, ...nutrition });
 export const formatNutrition = (value: number | null | undefined, unit: "g" | "mg" | "kcal") => `${unit === "g" ? Math.round((value ?? 0) * 10) / 10 : Math.round(value ?? 0)} ${unit}`;
 export const parseNonNegativeNumber = (value: string): number | null => { if (value.trim() === "") return null; const parsed = Number(value); return Number.isFinite(parsed) && parsed >= 0 ? parsed : null; };
 export const calculateRemainingCalories = (goal: number, consumed: number) => goal - consumed;

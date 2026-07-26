@@ -76,6 +76,8 @@ API 會以 `source + eventId + operationKey` 防重複，並以 transaction 一�
 - `hydrationMl`；非飲品通常為 0
 - `source`, `confidence`
 
+飲品常用食物另填 `hydrationMlPerServing`；套用到當日 entry 時，將此數字填入該筆的 `hydrationMl`。
+
 `meal` 僅可為：早餐、午餐、晚餐、點心、飲料、宵夜、其他。
 
 ## Corrections and invariants

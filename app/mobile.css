@@ -1,4 +1,71 @@
 /* Overrides for a comfortable phone-sized health log. */
+:root { --ink: #26353a; --muted: #73838a; --paper: #f7f8f6; --line: #e0e8e7; --sage: #7ea9b1; --sage-dark: #3f6f7a; --sage-pale: #ddecef; --ochre: #d99a6c; --coral: #d98272; --ring-track: #eaf0f0; }
+body { background: var(--paper); }
+.sidebar { background: #fbfcfc; border-right-color: #e1e9e8; box-shadow: 12px 0 32px #263c4208; }
+.brand i { border-radius: 50%; box-shadow: 0 5px 13px #3f6f7a30; }
+.side-date { line-height: 1.9; }
+.sidebar nav { gap: 8px; }
+.sidebar nav button { border-radius: 14px; padding: 13px 12px; transition: background-color 160ms ease, color 160ms ease; }
+.sidebar nav button.active { box-shadow: inset 0 0 0 1px #cfe2e6; }
+.content { max-width: 1220px; }
+header { margin-bottom: 28px; }
+h1 { letter-spacing: -1.7px; line-height: 1.12; }
+.muted { line-height: 1.65; }
+.eyebrow { color: #5b858e; }
+.primary, .save-btn { border-radius: 999px; box-shadow: 0 7px 15px #3f6f7a24; transition: transform 140ms ease, box-shadow 140ms ease; }
+.primary:active, .save-btn:active { box-shadow: none; transform: translateY(1px); }
+.copy-btn, .quick-row button { border-radius: 999px; }
+.sync-status { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.refresh-btn { align-items: center; background: #fff; border: 1px solid var(--line); border-radius: 999px; color: var(--sage-dark); cursor: pointer; display: inline-flex; font-size: 12px; gap: 5px; padding: 10px 12px; transition: background-color 140ms ease, transform 140ms ease; white-space: nowrap; }
+.refresh-btn span { font-size: 17px; line-height: .8; }
+.refresh-btn:active:not(:disabled) { background: var(--sage-pale); transform: scale(.97); }
+.refresh-btn:disabled { cursor: wait; opacity: .6; }
+.date-bar button, .date-bar label { border-radius: 12px; }
+.hero-card { background: linear-gradient(135deg, #3f6f7a 0%, #6d9aa2 100%); border-radius: 28px; box-shadow: 0 18px 34px #3f6f7a1d; min-height: 200px; padding: 34px 38px; }
+.hero-card .calorie strong { font-family: Georgia, "Noto Serif TC", serif; font-size: 52px; letter-spacing: -2px; }
+.hero-card .meter { background: #ffffff2b; height: 8px; }
+.hero-card .meter i { background: #d9dfb9; }
+.weight { border-left-color: #ffffff36; }
+.macro-row { gap: 13px; }
+.ring-wrap, .water { border: 0; box-shadow: 0 7px 20px #263c420a; }
+.ring-wrap { border-radius: 20px; }
+.ring-hole { background: #fff; }
+.water { border-radius: 20px; }
+.daily-secondary b { background: #edf5f6; border: 0; color: #557883; }
+.daily-guidance { background: #eef6f6; border: 0; border-radius: 16px; box-shadow: none; }
+.daily-guidance summary { color: #456d77; }
+.weight-input { background: #fff; border-radius: 14px; box-shadow: 0 5px 16px #263c4208; padding: 11px 13px; }
+.weight-input input { border: 0; border-bottom: 1px solid var(--line); border-radius: 0; }
+.section-heading { margin-top: 35px; }
+.section-heading h2 { font-size: 25px; letter-spacing: -.7px; }
+.entry-list { border: 0; }
+.meal-group { background: #fff; border: 1px solid #e6eceb; border-radius: 18px; box-shadow: 0 6px 18px #263c4208; margin-bottom: 13px; overflow: hidden; }
+.meal-group-heading { align-items: center; background: #fbfcfc; border-bottom: 1px solid #edf1f0; color: #557883; display: flex; justify-content: space-between; padding: 11px 15px; }
+.meal-group-heading span { font-size: 12px; font-weight: 700; letter-spacing: .7px; }
+.meal-group-heading small { color: var(--muted); font-size: 11px; }
+.entry { border-bottom-color: #edf1f0; padding: 15px; }
+.entry:last-child { border-bottom: 0; }
+.food-icon { background: #f3f1e8; border-radius: 50%; color: #9a7640; }
+.entry-actions button { border-color: #e4ebea; border-radius: 999px; }
+.entry-actions button:last-child { background: #fff8f5; border-color: #f2e5df; }
+.entry-source { display: inline-flex; align-items: center; background: #eef4f4; border-radius: 999px; color: #58747b; font-size: 10px; line-height: 1.2; margin-top: 7px; padding: 3px 7px; }
+.entry-source.source-ai_estimated, .entry-source.source-manual_estimated { background: #fff5e8; color: #98703a; }
+.entry-source.source-restaurant_official, .entry-source.source-nutrition_label { background: #edf5ef; color: #4f795b; }
+.trend-card, .weekly-goals, .weekly-trends, .targets-card, .food-library { border-color: #e3e9e8; box-shadow: 0 7px 20px #263c4208; }
+.trend-card, .weekly-goals, .weekly-trends, .targets-card { border-radius: 22px; }
+.food-library { border-radius: 20px; overflow: hidden; }
+.food-library article { align-items: center; display: grid; gap: 14px; grid-template-columns: 38px minmax(0, 1fr) auto auto; padding: 17px 18px; }
+.food-library article > div:nth-child(2) { min-width: 0; }
+.food-library article > span { margin-left: 0; }
+.food-actions { align-items: center; display: flex; gap: 6px; margin-left: 0; }
+.food-library .food-actions button { background: #fff; border: 1px solid var(--line); border-radius: 8px; color: var(--sage-dark); cursor: pointer; font-size: 12px; line-height: 1; padding: 8px 9px; white-space: nowrap; }
+.food-library .food-actions .add-today { background: var(--sage-dark); border-color: var(--sage-dark); color: #fff; font-weight: 700; }
+.food-library .food-actions button:last-child { border-color: transparent; color: #b06f53; font-size: 16px; padding-inline: 5px; }
+.meal-choices { display: grid; gap: 9px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 18px; }
+.meal-choices .parse-btn { margin: 0; min-height: 46px; }
+.weekly-goals, .weekly-trends { background: #fff; }
+.trend-sparkline { background: #fcfdfd; }
+.bottom-nav { background: #fcfdfd; box-shadow: 0 -7px 22px #263c420c; }
 .mobile-topbar { display: none; }
 .nav-icon { width: 18px; height: 18px; vertical-align: -4px; margin-right: 9px; }
 .bottom-nav .nav-icon { width: 20px; height: 20px; margin: 0; vertical-align: 0; }
@@ -25,6 +92,101 @@
 .entry-actions button { border: 1px solid var(--line); background: #fff; border-radius: 8px; color: var(--sage-dark); cursor: pointer; font-size: 12px; padding: 7px 8px; }
 .entry-actions button:last-child { color: #a65544; }
 .food-mark { display: block; width: 20px; height: 20px; }
+.nav-mark { display: block; width: 20px; height: 20px; }
+.side-nav .nav-mark { width: 19px; height: 19px; }
+.water .water-breakdown { margin: 0 0 6px; color: var(--muted); font-size: 11px; }
+.drink-shortcuts { width: 100%; margin-top: 13px; padding-top: 12px; border-top: 1px solid var(--line); }
+.drink-shortcuts > span { display: block; margin-bottom: 7px; color: var(--muted); font-size: 11px; }
+.drink-shortcuts > div { display: flex; flex-wrap: wrap; gap: 6px; }
+.drink-shortcuts button { border: 1px solid var(--line); background: #fff; border-radius: 999px; color: var(--sage-dark); cursor: pointer; font-size: 11px; line-height: 1.25; padding: 7px 9px; text-align: left; }
+.drink-shortcuts button:active { background: var(--sage-pale); transform: scale(.98); }
+.drink-shortcuts small { font-size: 10px; color: var(--muted); }
+.hydration-details { width: 100%; margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
+.hydration-details summary { color: var(--sage-dark); cursor: pointer; font-size: 12px; }
+.hydration-details > div { margin-top: 8px; }
+.hydration-details p { display: flex; justify-content: space-between; gap: 12px; margin: 5px 0; color: var(--muted); font-size: 11px; }
+.hydration-details b { color: var(--ink); font-weight: 600; }
+.hydration-reminder { background: #f0f5ef; border: 1px solid #d6e4dd; border-radius: 14px; margin: 0 0 16px; padding: 14px; }
+.hydration-reminder b { color: var(--sage-dark); font-size: 13px; }
+.hydration-reminder p { color: var(--muted); font-size: 12px; line-height: 1.5; margin: 6px 0 10px; }
+.hydration-reminder div { display: flex; flex-wrap: wrap; gap: 7px; }
+.hydration-reminder button, .duplicate-reminder button, .library-toolbar button { background: #fff; border: 1px solid var(--sage); border-radius: 9px; color: var(--sage-dark); cursor: pointer; font-size: 12px; padding: 8px 10px; }
+.duplicate-reminder { background: #fff8ed; border: 1px solid #f0ddbb; border-radius: 14px; margin: 0 0 16px; padding: 14px; }
+.duplicate-reminder b { color: #8a6835; font-size: 13px; }
+.duplicate-reminder p { color: var(--muted); font-size: 12px; line-height: 1.5; margin: 6px 0 10px; }
+.duplicate-reminder div { display: flex; flex-wrap: wrap; gap: 7px; }
+.duplicate-reminder button { border-color: #d8b577; color: #85622e; }
+.duplicate-list { list-style: none; margin: 18px 0; padding: 0; }
+.duplicate-list li { align-items: center; border-bottom: 1px solid var(--line); display: flex; gap: 12px; justify-content: space-between; padding: 11px 0; }
+.duplicate-list b { font-size: 13px; }
+.duplicate-list span { color: var(--muted); font-size: 11px; text-align: right; }
+.library-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+.library-toolbar .search { margin: 0; }
+.library-toolbar button { min-width: 64px; white-space: nowrap; }
+.library-toolbar button.active { background: var(--sage-dark); border-color: var(--sage-dark); color: #fff; }
+.daily-guidance { background: #fff; border: 1px solid var(--line); border-radius: 13px; margin: -4px 0 16px; padding: 11px 13px; }
+.daily-guidance summary { color: var(--sage-dark); cursor: pointer; font-size: 13px; font-weight: 700; }
+.daily-guidance summary small { background: var(--sage-pale); border-radius: 999px; font-size: 10px; margin-left: 5px; padding: 2px 6px; }
+.daily-guidance ul { color: var(--muted); font-size: 12px; line-height: 1.6; margin: 9px 0 0; padding-left: 18px; }
+.weekly-summary > div { grid-template-columns: repeat(3, 1fr) !important; gap: 18px; padding-bottom: 0 !important; }
+.weekly-goals { background: #fff; border: 1px solid var(--line); border-radius: 17px; margin: 18px 0; padding: 20px; }
+.weekly-goals h2 { font-family: Georgia, "Noto Serif TC", serif; font-size: 21px; margin: 0 0 15px; }
+.weekly-goals-empty p { color: var(--muted); font-size: 13px; line-height: 1.6; margin: 0; }
+.today-so-far { align-items: center; background: #edf6f7; border: 1px solid #d8e8ea; border-radius: 17px; display: flex; gap: 14px; justify-content: space-between; margin: 0 0 18px; padding: 15px 18px; }
+.today-so-far b { color: var(--sage-dark); display: block; font-size: 14px; }
+.today-so-far span { color: var(--muted); display: block; font-size: 11px; margin-top: 4px; }
+.today-so-far p { color: var(--ink); font-size: 12px; line-height: 1.6; margin: 0; text-align: right; }
+.weekly-goals > div { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+.weekly-goals article { min-width: 0; }
+.weekly-goals article > div:first-child { display: flex; align-items: baseline; gap: 5px; justify-content: space-between; }
+.weekly-goals b { color: var(--ink); font-size: 12px; }
+.weekly-goals span { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.goal-meter { background: var(--ring-track); border-radius: 99px; height: 7px; margin-top: 8px; overflow: hidden; }
+.goal-meter i { background: var(--sage); display: block; height: 100%; border-radius: inherit; }
+.weekly-trends { background: #fff; border: 1px solid var(--line); border-radius: 17px; margin: 18px 0; padding: 20px; }
+.weekly-trends-heading h2 { font-family: Georgia, "Noto Serif TC", serif; font-size: 21px; margin: 0; }
+.weekly-trends-heading p { color: var(--muted); font-size: 12px; margin: 6px 0 16px; }
+.weekly-trends-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.trend-sparkline { border: 1px solid var(--line); border-radius: 13px; min-width: 0; padding: 13px 12px 10px; }
+.trend-sparkline-title { display: flex; align-items: flex-start; justify-content: space-between; gap: 6px; }
+.trend-sparkline-title b { display: block; color: var(--muted); font-size: 11px; font-weight: 500; }
+.trend-sparkline-title strong { display: block; color: var(--ink); font-size: 21px; margin-top: 4px; }
+.trend-sparkline-title strong small { color: var(--muted); font-size: 10px; font-weight: 400; }
+.trend-sparkline-title > span { color: var(--muted); font-size: 10px; text-align: right; white-space: nowrap; }
+.trend-sparkline svg { aspect-ratio: 3.5; display: block; height: auto; margin-top: 10px; overflow: visible; width: 100%; }
+.spark-grid { fill: none; stroke: var(--line); stroke-width: .7; }
+.spark-target { fill: none; stroke: var(--ochre); stroke-dasharray: 3 3; stroke-width: 1; }
+.spark-line { fill: none; stroke: var(--sage-dark); stroke-linecap: round; stroke-linejoin: round; stroke-width: 2.2; }
+.spark-dot { fill: #fff; stroke: var(--sage-dark); stroke-width: 1.6; vector-effect: non-scaling-stroke; }
+.spark-labels { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; margin-top: 2px; }
+.spark-labels span { color: var(--muted); font-size: 9px; min-width: 0; text-align: center; }
+.spark-labels b { color: var(--ink); display: block; font-size: 9px; font-weight: 600; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; }
+.spark-empty { color: var(--muted); font-size: 12px; margin: 34px 0; text-align: center; }
+.targets-card { background: #fff; border: 1px solid var(--line); border-radius: 17px; padding: 22px; }
+.targets-hero { background: linear-gradient(135deg, #edf6f7, #e4f0f2); border-radius: 22px; color: var(--sage-dark); margin: -6px 0 18px; padding: 20px 22px; }
+.targets-hero p { font-size: 11px; font-weight: 700; letter-spacing: .8px; margin: 0 0 8px; }
+.targets-hero strong { display: block; font-family: Georgia, "Noto Serif TC", serif; font-size: 21px; letter-spacing: -.5px; }
+.targets-hero span { color: var(--muted); display: block; font-size: 12px; line-height: 1.6; margin-top: 9px; }
+.targets-card { padding: 0; overflow: hidden; }
+.target-group { border-bottom: 1px solid var(--line); padding: 23px 24px; }
+.target-group:last-of-type { border-bottom: 0; }
+.target-group-heading { margin-bottom: 17px; }
+.target-group-heading h2 { font-family: Georgia, "Noto Serif TC", serif; font-size: 21px; margin: 0; }
+.target-group-heading p { color: var(--muted); font-size: 12px; line-height: 1.55; margin: 6px 0 0; }
+.targets-grid { display: grid; gap: 11px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.targets-grid label { background: #fbfcfc; border: 1px solid #e4ebea; border-radius: 14px; display: block; min-width: 0; padding: 12px; }
+.targets-grid label > span { color: var(--ink); display: block; font-size: 13px; font-weight: 700; }
+.targets-grid label small { color: var(--muted); display: block; font-size: 10px; font-weight: 400; line-height: 1.35; margin-top: 4px; min-height: 27px; }
+.targets-grid label > div { align-items: baseline; border-bottom: 1px solid #d9e5e4; display: flex; gap: 4px; margin-top: 10px; }
+.targets-grid input { border: 0 !important; border-radius: 0 !important; color: var(--sage-dark) !important; font-family: Georgia, "Noto Serif TC", serif; font-size: 24px !important; font-weight: 700; min-width: 0; padding: 3px 0 !important; width: 100%; }
+.targets-grid input:focus { outline: none; }
+.targets-grid label:focus-within { border-color: var(--sage); box-shadow: 0 0 0 3px #ddecf080; }
+.targets-grid em { color: var(--muted); font-size: 11px; font-style: normal; white-space: nowrap; }
+.targets-card .save-btn { border-radius: 0; box-shadow: none; margin: 0; padding: 16px 24px; }
+.targets-grid .target-range-inputs { display: grid; gap: 4px; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto; }
+.targets-grid .target-range-inputs input { font-size: 19px !important; min-width: 0; }
+.targets-grid .target-range-inputs i { color: var(--muted); font-size: 11px; font-style: normal; }
+.targets-error { border-radius: 0; margin: 0; }
 
 @media (max-width: 760px) {
   .content { padding: 18px 16px 96px; }
@@ -37,6 +199,10 @@
   .header-actions .copy-btn { display: none; }
   .header-actions .primary { font-size: 13px; padding: 10px 12px; white-space: nowrap; }
   .header-actions .primary:first-letter { font-size: 13px; }
+  .header-actions .sync-status { display: none; }
+  .header-actions .refresh-btn { min-height: 41px; padding: 9px 10px; }
+  .header-actions .refresh-btn b { display: none; }
+  .header-actions .refresh-btn span { font-size: 20px; }
   h1 { font-size: 29px; line-height: 1.2; letter-spacing: -.8px; }
   .muted { font-size: 13px; line-height: 1.55; }
 
@@ -51,6 +217,9 @@
   .water .meter { grid-column: 1 / 3; margin: 10px 0; }
   .water .quick-row { grid-column: 1 / 3; display: flex; margin: 0; }
   .water .quick-row button { min-height: 34px; }
+  .water .water-breakdown { grid-column: 1 / 3; margin: 4px 0 0; }
+  .water .drink-shortcuts { grid-column: 1 / 3; }
+  .water .hydration-details { grid-column: 1 / 3; }
   .quick-row { display: flex; align-items: center; margin: 0 0 20px; }
   .weight-input { flex: 1; justify-content: space-between; }
   .weight-input input { width: 102px; }
@@ -60,21 +229,49 @@
   .entry { position: relative; display: grid; grid-template-columns: 38px minmax(0, 1fr); align-items: start; gap: 10px; padding: 15px 0 54px; }
   .entry > div:nth-child(2) { min-width: 0; }
   .entry > div:nth-child(2) b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .entry-source { margin-top: 5px; }
   .entry-nutrition { position: absolute; left: 48px; bottom: 14px; margin: 0; text-align: left; }
   .entry-nutrition span { display: block; margin-top: 2px; }
   .entry-actions { position: absolute; right: 0; bottom: 12px; margin: 0; gap: 4px; }
   .entry-actions button { padding: 6px 7px; min-height: 31px; }
 
   .bottom-nav { height: 68px; padding-bottom: env(safe-area-inset-bottom); z-index: 8; box-shadow: 0 -6px 20px #26372f0d; }
-  .bottom-nav button { min-width: 57px; place-items: center; }
+  .bottom-nav button { min-width: 0; flex: 1; place-items: center; }
   .bottom-nav b { line-height: 1; }
   .bottom-nav .nav-icon { display: block; }
+  .bottom-nav .nav-mark { margin: 0 auto; }
   .bottom-nav button.active { font-weight: 700; }
 
-  .food-library article { padding: 14px 12px; gap: 10px; }
+  .food-library article { display: grid; gap: 10px; grid-template-columns: 38px minmax(0, 1fr) auto; padding: 14px 12px; }
   .food-library article > div:nth-child(2) { min-width: 0; flex: 1; }
   .food-library article b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .food-library button { padding: 8px; }
+  .food-library .food-actions { grid-column: 2 / 4; grid-row: 2; justify-content: flex-end; }
+  .food-library .food-actions button { min-height: 32px; padding: 7px 8px; }
+  .food-library .food-actions .add-today { font-size: 11px; }
+  .library-toolbar button { flex: 0 0 auto; min-height: 42px; }
+  .weekly-summary > div { gap: 13px; }
+  .weekly-summary h2 { font-size: 18px; }
+  .weekly-goals { padding: 16px; }
+  .weekly-goals > div { grid-template-columns: 1fr; gap: 12px; }
+  .today-so-far { align-items: flex-start; display: block; padding: 14px 16px; }
+  .today-so-far p { margin-top: 10px; text-align: left; }
+  .weekly-trends { padding: 16px; }
+  .weekly-trends-grid { grid-template-columns: 1fr; gap: 10px; }
+  .trend-sparkline { padding: 13px 12px 10px; }
+  .trend-sparkline svg { height: auto; }
+  .targets-card { padding: 18px; }
+  .targets-hero { border-radius: 18px; margin: -5px 0 14px; padding: 18px; }
+  .targets-hero strong { font-size: 19px; }
+  .targets-card { padding: 0; }
+  .target-group { padding: 19px 16px; }
+  .target-group-heading { margin-bottom: 14px; }
+  .target-group-heading h2 { font-size: 20px; }
+  .targets-grid { grid-template-columns: 1fr 1fr; gap: 9px; }
+  .targets-grid label { padding: 11px; }
+  .targets-grid label small { min-height: 0; }
+  .targets-grid input { font-size: 22px !important; }
+  .targets-grid .target-range-inputs input { font-size: 18px !important; }
+  .targets-card .save-btn { padding: 16px; }
 
   .table-wrap { border: 0; border-radius: 0; overflow: visible; }
   .table-wrap table { min-width: 0; }
@@ -87,8 +284,8 @@
   .table-wrap td:nth-child(2)::before { content: "熱量 "; }
   .table-wrap td:nth-child(3)::before { content: "蛋白質 "; }
   .table-wrap td:nth-child(4)::before { content: "碳水／脂肪 "; }
-  .table-wrap td:nth-child(5)::before { content: "水分 "; }
-  .table-wrap td:nth-child(6)::before { content: "體重 "; }
+  .table-wrap td:nth-child(5)::before { content: "纖維／鈉 "; }
+  .table-wrap td:nth-child(6)::before { content: "飲水 "; }
   .table-wrap td:last-child { grid-column: 2; grid-row: 1; align-self: center; }
   .table-wrap td:last-child .table-edit { padding: 7px 10px; }
 
@@ -100,6 +297,17 @@
   .daily-secondary b { font-size: 11px; padding: 7px 9px; }
   .form-section { padding-top: 14px; }
   .form-section textarea { min-height: 70px; }
+  .content { background: var(--paper); }
+  .hero-card { border-radius: 24px; box-shadow: 0 13px 28px #3f6f7a1c; }
+  .hero-card .calorie strong { font-size: 45px; }
+  .section-heading { margin-top: 31px; }
+  .section-heading h2 { font-size: 24px; }
+  .meal-group { border-radius: 17px; margin-bottom: 11px; }
+  .meal-group-heading { padding: 10px 14px; }
+  .entry { padding: 15px 14px 54px; }
+  .entry-actions { right: 14px; }
+  .entry-nutrition { left: 62px; }
+  .bottom-nav { background: #fcfdfd; box-shadow: 0 -7px 22px #263c420c; }
   /* The compact header action rule must never shrink the Google sign-in label. */
   .setup .primary { font-size: 14px; padding: 12px 17px; white-space: normal; }
 }

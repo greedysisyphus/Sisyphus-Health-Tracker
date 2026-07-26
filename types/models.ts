@@ -8,6 +8,7 @@ export interface StoredFood {
   brand: string | null;
   category: string | null;
   servingWeightG: number | null;
+  hydrationMlPerServing: number;
   nutrition: {
     caloriesKcal: number; proteinG: number; carbsG: number; fatG: number;
     fiberG: number; sugarG: number; saturatedFatG: number; transFatG: number | null;
