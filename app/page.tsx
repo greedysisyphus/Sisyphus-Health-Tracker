@@ -4,6 +4,7 @@ import { onAuthStateChanged, signInWithPopup, signOut, type User } from "firebas
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { auth, googleProvider, hasFirebaseConfig } from "../lib/firebase";
 import { calculateDailyNutrition, emptyNutrition, foodCategories, formatLocalDate, formatNutrition, meals, parseNonNegativeNumber, totalForEntry, type FoodEntry, type MealType, type Nutrition } from "../lib/nutrition";
+import { buildWeightTrendChart, collectWeightSamples } from "../lib/weight-trend";
 import { getBodyLog, getDailyLog, getUserProfile, listDailyEntries, listDailyOverviews, listFoods, removeEntry, removeSavedFood, saveBodyLog, saveEntry, saveSavedFood, saveWater, type DailyOverview, type SavedFoodInput, type SavedFoodSummary } from "../services/health-service";
 
 type View = "daily" | "overview" | "trends" | "foods";
@@ -48,7 +49,7 @@ export default function Home() {
 
   const loadLibrary = useCallback(async () => { if (user) setSavedFoods(await listFoods(user.uid)); }, [user]);
   useEffect(() => { const timer = window.setTimeout(() => { void loadDaily(); }, 0); return () => window.clearTimeout(timer); }, [loadDaily]);
-  useEffect(() => { if (view === "daily") return; const timer = window.setTimeout(() => { void Promise.all([listDailyOverviews(user?.uid ?? ""), loadLibrary()]).then(([days]) => setHistory(days)).catch(() => setNotice("讀取彙整資料失敗。")); }, 0); return () => window.clearTimeout(timer); }, [loadLibrary, user?.uid, view]);
+  useEffect(() => { if (view === "daily") return; const timer = window.setTimeout(() => { void Promise.all([listDailyOverviews(user?.uid ?? "", 120), loadLibrary()]).then(([days]) => setHistory(days)).catch(() => setNotice("讀取彙整資料失敗。")); }, 0); return () => window.clearTimeout(timer); }, [loadLibrary, user?.uid, view]);
 
   const saveDailyEntry = async (entry: FoodEntry) => {
     if (!user) return;
@@ -102,7 +103,7 @@ export default function Home() {
     <section className="content">
       <div className="mobile-topbar"><div className="brand"><i>n</i><span>日常營養</span></div><button className="text-button" onClick={() => void signOut(auth!)}>登出</button></div>
       {view === "daily" && <DailyView date={date} setDate={setDate} totals={totals} entries={entries} waterMl={waterMl} weightKg={weightKg} loading={loading} notice={notice} setEntryEditor={setEntryEditor} deleteEntry={deleteEntry} saveAsCommon={saveAsCommon} addWater={addWater} updateWeight={updateWeight} exportData={openExport} />}
-      {view === "overview" && <Overview history={history} openDate={next => { setDate(next); setView("daily"); }} exportData={openExport} />}
+      {view === "overview" && <Overview history={history.filter(day => day.entries.length > 0 || day.waterMl > 0 || day.total.caloriesKcal > 0)} openDate={next => { setDate(next); setView("daily"); }} exportData={openExport} />}
       {view === "trends" && <Trends history={history} />}
       {view === "foods" && <FoodLibrary foods={savedFoods} add={() => setFoodEditor(null)} edit={setFoodEditor} remove={deleteFood} />}
     </section>
@@ -140,7 +141,54 @@ function DailyView({ date, setDate, totals, entries, waterMl, weightKg, loading,
 function Metric({ label, value, target }: { label: string; value: number; target: number }) { return <div className="ring-wrap"><div className="ring" style={{ background: `conic-gradient(var(--sage) ${Math.min(100, value / target * 100)}%,var(--ring-track) 0)` }}><div className="ring-hole"><strong>{Math.round(value)}</strong><span>/{target}g</span></div></div><span>{label}</span></div>; }
 function EntryList({ entries, edit, remove, saveAsCommon }: { entries: FoodEntry[]; edit: (entry: FoodEntry) => void; remove: (id: string) => Promise<void>; saveAsCommon: (entry: FoodEntry) => Promise<void> }) { return <section className="entry-list">{entries.length ? entries.map(entry => { const total = totalForEntry(entry); return <article className="entry" key={entry.id}><div className="food-icon"><FoodMark /></div><div><b>{entry.name}</b><p>{entry.mealType} · {entry.servings} 份{entry.brand ? ` · ${entry.brand}` : ""}</p></div><div className="entry-nutrition"><b>{Math.round(total.caloriesKcal)} <small>kcal</small></b><span>P {formatNutrition(total.proteinG, "g")}　C {formatNutrition(total.carbsG, "g")}　F {formatNutrition(total.fatG, "g")}</span></div><div className="entry-actions"><button onClick={() => void saveAsCommon(entry)}>常用</button><button onClick={() => edit(entry)}>編輯</button><button onClick={() => void remove(entry.id)}>刪除</button></div></article>; }) : <p className="empty">今天還沒有飲食紀錄。可直接新增一筆，或傳訊息給 Hermes。</p>}</section>; }
 function Overview({ history, openDate, exportData }: { history: DailyOverview[]; openDate: (date: string) => void; exportData: () => void }) { return <><header><div><p className="eyebrow">DAILY OVERVIEW</p><h1>每一日，都有脈絡。</h1><p className="muted">顯示已紀錄日期；點選任一列回到完整明細。</p></div><button className="copy-btn" onClick={exportData}>匯出資料</button></header><div className="table-wrap"><table><thead><tr><th>日期</th><th>熱量</th><th>蛋白質</th><th>碳水／脂肪</th><th>纖維／鈉</th><th>飲水</th><th></th></tr></thead><tbody>{history.length ? history.map(day => <tr key={day.date}><td><b>{dateLabel(day.date)}</b><small>{day.entries.length} 項食物紀錄</small></td><td>{formatNutrition(day.total.caloriesKcal, "kcal")}</td><td>{formatNutrition(day.total.proteinG, "g")}</td><td>{formatNutrition(day.total.carbsG, "g")} ／ {formatNutrition(day.total.fatG, "g")}</td><td>{formatNutrition(day.total.fiberG, "g")} ／ {formatNutrition(day.total.sodiumMg, "mg")}</td><td>{day.waterMl} ml</td><td><button className="table-edit" onClick={() => openDate(day.date)}>查看</button></td></tr>) : <tr><td colSpan={7}>還沒有可彙整的紀錄。</td></tr>}</tbody></table></div></> }
-function Trends({ history }: { history: DailyOverview[] }) { const days = [...history].reverse().slice(-14); const average = (key: keyof Nutrition) => days.length ? Math.round(days.reduce((sum, day) => sum + Number(day.total[key] ?? 0), 0) / days.length) : 0; return <><header><div><p className="eyebrow">TRENDS</p><h1>看見真正的趨勢。</h1><p className="muted">以已有紀錄計算平均，缺漏值不會被猜測。</p></div></header><section className="trend-card"><div><div><p>平均熱量</p><h2>{average("caloriesKcal")} <small>kcal</small></h2></div><div><p>平均蛋白質</p><h2>{average("proteinG")} <small>g</small></h2></div><div><p>平均纖維</p><h2>{average("fiberG")} <small>g</small></h2></div></div><div className="nutrition-bars">{days.map(day => <div key={day.date}><div className="bar-pair"><i style={{ height: `${Math.min(100, day.total.caloriesKcal / targets.caloriesKcal * 100)}%` }} /><em style={{ height: `${Math.min(100, day.total.proteinG / targets.proteinG * 100)}%` }} /></div><span>{day.date.slice(5)}</span><b>{Math.round(day.total.caloriesKcal)}</b></div>)}</div><p className="legend"><i /> 熱量　<em /> 蛋白質</p></section></> }
+function Trends({ history }: { history: DailyOverview[] }) {
+  const days = [...history].filter(day => day.entries.length || day.waterMl || day.total.caloriesKcal).reverse().slice(-14);
+  const average = (key: keyof Nutrition) => days.length ? Math.round(days.reduce((sum, day) => sum + Number(day.total[key] ?? 0), 0) / days.length) : 0;
+  const weightSamples = collectWeightSamples(history);
+  const weightChart = buildWeightTrendChart(weightSamples);
+  const deltaLabel = !weightChart ? "" : weightChart.deltaKg === 0 ? "持平" : `${weightChart.deltaKg > 0 ? "+" : ""}${weightChart.deltaKg} kg`;
+  return <>
+    <header><div><p className="eyebrow">TRENDS</p><h1>看見真正的趨勢。</h1><p className="muted">體重以實際量測點連線；缺日不中斷。營養平均只計算已有飲食紀錄的日期。</p></div></header>
+    <section className="trend-card weight-trend-card">
+      <div className="weight-trend-head">
+        <div><h3>體重追蹤</h3><p>即使不是每天量，也會依日期軸串成一條趨勢線。</p></div>
+        {weightChart && <div className="weight-trend-stats">
+          <div><p>最新</p><h2>{weightChart.latest.weightKg.toFixed(1)} <small>kg</small></h2></div>
+          <div><p>區間均重</p><h2>{weightChart.averageKg.toFixed(1)} <small>kg</small></h2></div>
+          <div><p>{weightChart.first.date.slice(5)} → {weightChart.latest.date.slice(5)}</p><h2 className={weightChart.deltaKg < 0 ? "down" : weightChart.deltaKg > 0 ? "up" : ""}>{deltaLabel}</h2></div>
+        </div>}
+      </div>
+      {weightChart ? (
+        <div className="weight-chart-wrap" role="img" aria-label={`體重趨勢，從 ${weightChart.first.weightKg} 公斤到 ${weightChart.latest.weightKg} 公斤`}>
+          <svg className="weight-chart" viewBox={`0 0 ${weightChart.width} ${weightChart.height}`} preserveAspectRatio="none">
+            {weightChart.yTicks.map(tick => (
+              <g key={tick.label}>
+                <line className="weight-grid" x1="44" x2={weightChart.width - 18} y1={tick.y} y2={tick.y} />
+                <text className="weight-axis" x="40" y={tick.y + 4} textAnchor="end">{tick.label}</text>
+              </g>
+            ))}
+            <path className="weight-line" d={weightChart.path} />
+            {weightChart.points.map(point => (
+              <g key={point.date}>
+                <circle className="weight-dot" cx={point.x} cy={point.y} r="4.5" />
+                <title>{`${point.date} · ${point.weightKg} kg`}</title>
+              </g>
+            ))}
+            {weightChart.xLabels.map(label => (
+              <text key={`${label.date}-${label.x}`} className="weight-axis" x={label.x} y={weightChart.height - 8} textAnchor="middle">{label.label}</text>
+            ))}
+          </svg>
+          <p className="weight-chart-note">{weightChart.points.length} 次量測 · 線段跨越未量測日期，不代表中間有補值紀錄</p>
+        </div>
+      ) : <p className="empty">還沒有體重紀錄。在每日頁輸入體重後，這裡會自動連成趨勢線。</p>}
+    </section>
+    <section className="trend-card">
+      <div><div><p>平均熱量</p><h2>{average("caloriesKcal")} <small>kcal</small></h2></div><div><p>平均蛋白質</p><h2>{average("proteinG")} <small>g</small></h2></div><div><p>平均纖維</p><h2>{average("fiberG")} <small>g</small></h2></div></div>
+      <div className="nutrition-bars">{days.length ? days.map(day => <div key={day.date}><div className="bar-pair"><i style={{ height: `${Math.min(100, day.total.caloriesKcal / targets.caloriesKcal * 100)}%` }} /><em style={{ height: `${Math.min(100, day.total.proteinG / targets.proteinG * 100)}%` }} /></div><span>{day.date.slice(5)}</span><b>{Math.round(day.total.caloriesKcal)}</b></div>) : <p className="empty">尚無飲食趨勢資料。</p>}</div>
+      <p className="legend"><i /> 熱量　<em /> 蛋白質</p>
+    </section>
+  </>;
+}
 function FoodLibrary({ foods, add, edit, remove }: { foods: SavedFoodSummary[]; add: () => void; edit: (food: SavedFoodInput) => void; remove: (id: string) => Promise<void> }) { const [query, setQuery] = useState(""); const visible = foods.filter(food => `${food.name} ${food.brand ?? ""} ${food.category ?? ""}`.toLowerCase().includes(query.toLowerCase())); return <><header><div><p className="eyebrow">MY FOODS</p><h1>常用食物，慢慢累積。</h1><p className="muted">可新增、修改、刪除，並在新增紀錄時套用。</p></div><button className="primary" onClick={add}>＋ 新增食物</button></header><input className="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="搜尋名稱、品牌或分類" /><section className="food-library">{visible.length ? visible.map(food => <article key={food.id}><div className="food-icon"><FoodMark /></div><div><b>{food.name}</b><p>{food.brand ? `${food.brand} · ` : ""}{food.category ?? "未分類"} · P {formatNutrition(food.nutrition.proteinG, "g")}</p></div><span>{formatNutrition(food.nutrition.caloriesKcal, "kcal")}</span><button onClick={() => edit(food)}>編輯</button><button aria-label={`刪除 ${food.name}`} onClick={() => void remove(food.id)}>×</button></article>) : <p className="empty">尚無符合的常用食物。</p>}</section></> }
 
 type NumericKey = keyof Nutrition | "servings" | "servingWeightG";
