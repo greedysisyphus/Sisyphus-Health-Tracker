@@ -8,13 +8,14 @@ export type WeightTrendChart = {
   path: string;
   points: WeightChartPoint[];
   yTicks: { value: number; y: number; label: string }[];
-  xLabels: { date: string; x: number; label: string }[];
+  xLabels: { date: string; x: number; label: string; anchor: "start" | "middle" | "end" }[];
   minWeight: number;
   maxWeight: number;
   latest: WeightSample;
   first: WeightSample;
   deltaKg: number;
   averageKg: number;
+  domain: { lo: number; hi: number };
 };
 
 const dayIndex = (date: string) => Math.round(new Date(`${date}T12:00:00Z`).getTime() / 86_400_000);
@@ -31,6 +32,26 @@ export function collectWeightSamples(rows: { date: string; weightKg?: number | n
     .sort((a, b) => a.date.localeCompare(b.date));
 }
 
+/** Choose a readable Y domain that keeps real change visible without huge empty bands. */
+export function weightDomain(minWeight: number, maxWeight: number): { lo: number; hi: number } {
+  const span = Math.max(maxWeight - minWeight, 0);
+  // Tight padding so small kg changes still look like a slope, not a flat ribbon.
+  const pad = Math.max(span * 0.08, 0.25);
+  let lo = minWeight - pad;
+  let hi = maxWeight + pad;
+  // Snap to 0.5 kg ticks for cleaner axis labels.
+  lo = Math.floor(lo * 2) / 2;
+  hi = Math.ceil(hi * 2) / 2;
+  // Keep at least ~2 kg of vertical room so multi-kg drops read clearly.
+  if (hi - lo < 2) {
+    const mid = (minWeight + maxWeight) / 2;
+    lo = Math.floor((mid - 1) * 2) / 2;
+    hi = Math.ceil((mid + 1) * 2) / 2;
+  }
+  if (hi <= lo) hi = lo + 2;
+  return { lo, hi };
+}
+
 /**
  * Build an SVG polyline that connects sparse weight samples by calendar day.
  * Missing days do not break the line — points are placed on a true date axis.
@@ -45,9 +66,10 @@ export function buildWeightTrendChart(
 ): WeightTrendChart | null {
   if (!samples.length) return null;
 
-  const width = options?.width ?? 640;
-  const height = options?.height ?? 220;
-  const padding = options?.padding ?? { top: 18, right: 18, bottom: 30, left: 44 };
+  // Taller default canvas so wide mobile/desktop cards don't squash slopes.
+  const width = options?.width ?? 720;
+  const height = options?.height ?? 320;
+  const padding = options?.padding ?? { top: 16, right: 20, bottom: 36, left: 48 };
   const plotW = Math.max(width - padding.left - padding.right, 1);
   const plotH = Math.max(height - padding.top - padding.bottom, 1);
 
@@ -59,9 +81,7 @@ export function buildWeightTrendChart(
   const weights = samples.map(sample => sample.weightKg);
   const minWeight = Math.min(...weights);
   const maxWeight = Math.max(...weights);
-  const padW = Math.max((maxWeight - minWeight) * 0.18, 0.4);
-  const lo = minWeight - padW;
-  const hi = maxWeight + padW;
+  const { lo, hi } = weightDomain(minWeight, maxWeight);
   const spanW = Math.max(hi - lo, 0.1);
 
   const project = (sample: WeightSample): WeightChartPoint => {
@@ -75,7 +95,7 @@ export function buildWeightTrendChart(
     .map((point, index) => `${index === 0 ? "M" : "L"}${point.x.toFixed(2)} ${point.y.toFixed(2)}`)
     .join(" ");
 
-  const tickCount = 4;
+  const tickCount = 5;
   const yTicks = Array.from({ length: tickCount }, (_, index) => {
     const ratio = index / (tickCount - 1);
     const value = hi - ratio * spanW;
@@ -88,9 +108,10 @@ export function buildWeightTrendChart(
     : samples.length === 2
       ? [0, 1]
       : [0, Math.floor((samples.length - 1) / 2), samples.length - 1];
-  const xLabels = [...new Set(labelIndexes)].map(index => {
+  const xLabels = [...new Set(labelIndexes)].map((index, order, all) => {
     const point = points[index];
-    return { date: point.date, x: point.x, label: point.date.slice(5) };
+    const anchor: "start" | "middle" | "end" = all.length === 1 ? "middle" : order === 0 ? "start" : order === all.length - 1 ? "end" : "middle";
+    return { date: point.date, x: point.x, label: point.date.slice(5), anchor };
   });
 
   const first = samples[0];
@@ -111,5 +132,6 @@ export function buildWeightTrendChart(
     first,
     deltaKg,
     averageKg,
+    domain: { lo, hi },
   };
 }

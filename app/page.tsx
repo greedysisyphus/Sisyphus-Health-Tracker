@@ -289,22 +289,22 @@ function Trends({ history }: { history: DailyOverview[] }) {
       </div>
       {weightChart ? (
         <div className="weight-chart-wrap" role="img" aria-label={`體重趨勢，從 ${weightChart.first.weightKg} 公斤到 ${weightChart.latest.weightKg} 公斤`}>
-          <svg className="weight-chart" viewBox={`0 0 ${weightChart.width} ${weightChart.height}`} preserveAspectRatio="none">
+          <svg className="weight-chart" viewBox={`0 0 ${weightChart.width} ${weightChart.height}`} preserveAspectRatio="xMidYMid meet">
             {weightChart.yTicks.map(tick => (
-              <g key={tick.label}>
-                <line className="weight-grid" x1="44" x2={weightChart.width - 18} y1={tick.y} y2={tick.y} />
-                <text className="weight-axis" x="40" y={tick.y + 4} textAnchor="end">{tick.label}</text>
+              <g key={`y-${tick.label}`}>
+                <line className="weight-grid" x1="48" x2={weightChart.width - 20} y1={tick.y} y2={tick.y} />
+                <text className="weight-axis" x="42" y={tick.y + 4} textAnchor="end">{tick.label}</text>
               </g>
             ))}
             <path className="weight-line" d={weightChart.path} />
             {weightChart.points.map(point => (
               <g key={point.date}>
-                <circle className="weight-dot" cx={point.x} cy={point.y} r="4.5" />
+                <circle className="weight-dot" cx={point.x} cy={point.y} r="5" />
                 <title>{`${point.date} · ${point.weightKg} kg`}</title>
               </g>
             ))}
             {weightChart.xLabels.map(label => (
-              <text key={`${label.date}-${label.x}`} className="weight-axis" x={label.x} y={weightChart.height - 8} textAnchor="middle">{label.label}</text>
+              <text key={`${label.date}-${label.x}`} className="weight-axis weight-x-label" x={label.x} y={weightChart.height - 10} textAnchor={label.anchor}>{label.label}</text>
             ))}
           </svg>
           <p className="weight-chart-note">{weightChart.points.length} 次量測 · 線段跨越未量測日期，不代表中間有補值紀錄</p>
