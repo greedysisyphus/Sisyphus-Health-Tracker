@@ -416,3 +416,23 @@ h1 { letter-spacing: -1.7px; line-height: 1.12; }
     padding: 9px 12px;
   }
 }
+
+/* Weight trend mobile layout — keep stats readable in 3 cards */
+.weight-trend-card { overflow: hidden; }
+.weight-trend-head { gap: 14px !important; }
+.weight-trend-stats > div { min-width: 0; }
+.weight-trend-stats h2 {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.weight-trend-stats p {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@media (max-width: 760px) {
+  .weight-trend-copy p { max-width: none; }
+  .weekly-summary > div:first-child {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
