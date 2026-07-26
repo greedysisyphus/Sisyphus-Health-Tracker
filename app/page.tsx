@@ -275,16 +275,30 @@ function Trends({ history }: { history: DailyOverview[] }) {
   const weightAverage = calculateSevenDayAverage(completedDays.map(day => day.weightKg ?? null));
   const weightSamples = collectWeightSamples(history);
   const weightChart = buildWeightTrendChart(weightSamples);
-  const deltaLabel = !weightChart ? "" : weightChart.deltaKg === 0 ? "持平" : `${weightChart.deltaKg > 0 ? "+" : ""}${weightChart.deltaKg} kg`;
+  const deltaLabel = !weightChart ? "" : weightChart.deltaKg === 0 ? "持平" : `${weightChart.deltaKg > 0 ? "+" : ""}${weightChart.deltaKg}`;
+  const rangeLabel = weightChart ? `${weightChart.first.date.slice(5).replace("-", "/")}–${weightChart.latest.date.slice(5).replace("-", "/")}` : "";
+  const deltaUnit = weightChart && weightChart.deltaKg !== 0 ? "kg" : "";
   return <>
     <header><div><p className="eyebrow">WEEKLY REPORT</p><h1>這一週，走得怎麼樣？</h1><p className="muted">體重即使不是每天量也會連成趨勢線；週平均與達成率只計入已結束的 {completedDays.length} 天。</p></div></header>
     <section className="trend-card weight-trend-card">
       <div className="weight-trend-head">
-        <div><h3>體重追蹤</h3><p>以實際量測點連線；缺日不中斷，也不會把空白當成 0。</p></div>
+        <div className="weight-trend-copy">
+          <h3>體重追蹤</h3>
+          <p>以實際量測點連線；缺日不中斷，也不會把空白當成 0。</p>
+        </div>
         {weightChart && <div className="weight-trend-stats">
-          <div><p>最新</p><h2>{weightChart.latest.weightKg.toFixed(1)} <small>kg</small></h2></div>
-          <div><p>區間均重</p><h2>{weightChart.averageKg.toFixed(1)} <small>kg</small></h2></div>
-          <div><p>{weightChart.first.date.slice(5)} → {weightChart.latest.date.slice(5)}</p><h2 className={weightChart.deltaKg < 0 ? "down" : weightChart.deltaKg > 0 ? "up" : ""}>{deltaLabel}</h2></div>
+          <div>
+            <p>最新</p>
+            <h2>{weightChart.latest.weightKg.toFixed(1)}<small>kg</small></h2>
+          </div>
+          <div>
+            <p>區間均重</p>
+            <h2>{weightChart.averageKg.toFixed(1)}<small>kg</small></h2>
+          </div>
+          <div>
+            <p>{rangeLabel}</p>
+            <h2 className={weightChart.deltaKg < 0 ? "down" : weightChart.deltaKg > 0 ? "up" : ""}>{deltaLabel}{deltaUnit ? <small>{deltaUnit}</small> : null}</h2>
+          </div>
         </div>}
       </div>
       {weightChart ? (
