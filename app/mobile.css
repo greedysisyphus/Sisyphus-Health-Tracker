@@ -290,7 +290,15 @@ h1 { letter-spacing: -1.7px; line-height: 1.12; }
   .table-wrap td:last-child .table-edit { padding: 7px 10px; }
 
   .sheet-backdrop { place-items: end stretch; }
-  .sheet { max-height: 92vh; overflow: auto; padding: 14px 18px calc(22px + env(safe-area-inset-bottom)); }
+  .sheet {
+    max-height: min(92dvh, 100%);
+    overflow: hidden;
+    padding: 14px 18px 0;
+  }
+  .sheet-body { padding-bottom: 10px; }
+  .sheet-footer {
+    padding: 12px 0 calc(16px + env(safe-area-inset-bottom, 0px));
+  }
   .sheet-title h2 { font-size: 23px; }
   .form-grid { grid-template-columns: 1fr; gap: 12px; margin: 16px 0 18px; }
   .daily-secondary { gap: 6px; margin-bottom: 18px; }
