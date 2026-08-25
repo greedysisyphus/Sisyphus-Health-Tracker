@@ -5,10 +5,16 @@ import { getAdminDb } from "../../../../lib/firebase-admin";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const noStoreHeaders = { "Cache-Control": "private, no-store, max-age=0" };
+
+function json(body: Record<string, unknown>, status = 200) {
+  return Response.json(body, { status, headers: noStoreHeaders });
+}
+
 function authorized(request: Request): boolean {
-  const secret = process.env.WIDGET_READ_TOKEN;
+  const secret = process.env.WIDGET_READ_TOKEN!;
   const authorization = request.headers.get("authorization");
-  if (!secret || !authorization?.startsWith("Bearer ")) return false;
+  if (!authorization?.startsWith("Bearer ")) return false;
 
   const supplied = authorization.slice("Bearer ".length);
   const expectedBuffer = Buffer.from(secret);
@@ -28,13 +34,13 @@ function taipeiDate(): string {
 }
 
 export async function GET(request: Request) {
-  if (!authorized(request)) {
-    return Response.json({ error: "unauthorized" }, { status: 401 });
+  const ownerId = process.env.HEALTH_TRACKER_OWNER_ID;
+  if (!process.env.WIDGET_READ_TOKEN || !ownerId || !process.env.FIREBASE_ADMIN_SERVICE_ACCOUNT_JSON) {
+    return json({ error: "server_not_configured" }, 500);
   }
 
-  const ownerId = process.env.HEALTH_TRACKER_OWNER_ID;
-  if (!ownerId) {
-    return Response.json({ error: "server_not_configured" }, { status: 500 });
+  if (!authorized(request)) {
+    return json({ error: "unauthorized" }, 401);
   }
 
   try {
@@ -50,7 +56,7 @@ export async function GET(request: Request) {
     const total = totalForEntryData(entriesSnapshot.docs.map(document => document.data()));
     const daily = dailySnapshot.data();
 
-    return Response.json({
+    return json({
       date,
       caloriesKcal: total.caloriesKcal,
       proteinG: total.proteinG,
@@ -60,13 +66,9 @@ export async function GET(request: Request) {
       waterMl: Number(daily?.waterMl ?? 0),
       steps: typeof daily?.steps === "number" ? daily.steps : null,
       weightKg: typeof daily?.weightKg === "number" ? daily.weightKg : null,
-    }, {
-      headers: {
-        "Cache-Control": "private, no-store",
-      },
     });
   } catch (error) {
     console.error("Widget health API failed", error);
-    return Response.json({ error: "operation_failed" }, { status: 500 });
+    return json({ error: "operation_failed" }, 500);
   }
 }
