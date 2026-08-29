@@ -5,6 +5,7 @@ import {
   canonicalPayloadHash,
   idempotencyDocumentId,
   nextWaterMl,
+  resolveDayBodyMetrics,
   resolveIdempotency,
 } from "../lib/agent-health";
 
@@ -134,5 +135,23 @@ describe("Hermes health write contract", () => {
     });
     expect(plan.dailySummary.caloriesKcal).toBe(140);
     expect(plan.dailySummary.proteinG).toBe(12);
+  });
+});
+
+describe("resolveDayBodyMetrics", () => {
+  it("prefers bodyLogs steps then falls back to dailyLogs (Apple Health import)", () => {
+    expect(resolveDayBodyMetrics({ steps: 8200 }, undefined)).toEqual({ steps: 8200, weightKg: null });
+    expect(resolveDayBodyMetrics({}, { steps: 4100 })).toEqual({ steps: 4100, weightKg: null });
+    expect(resolveDayBodyMetrics({ steps: 8200 }, { steps: 4100 })).toEqual({ steps: 4100, weightKg: null });
+  });
+
+  it("prefers bodyLogs weight then falls back to dailyLogs", () => {
+    expect(resolveDayBodyMetrics({ weightKg: 72.1 }, undefined)).toEqual({ steps: null, weightKg: 72.1 });
+    expect(resolveDayBodyMetrics({}, { weightKg: 71.8 })).toEqual({ steps: null, weightKg: 71.8 });
+  });
+
+  it("returns nulls when neither store has metrics", () => {
+    expect(resolveDayBodyMetrics(undefined, undefined)).toEqual({ steps: null, weightKg: null });
+    expect(resolveDayBodyMetrics({}, {})).toEqual({ steps: null, weightKg: null });
   });
 });

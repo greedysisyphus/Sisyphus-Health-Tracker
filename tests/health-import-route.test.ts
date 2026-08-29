@@ -31,14 +31,27 @@ function configureServer() {
   process.env.FIREBASE_ADMIN_SERVICE_ACCOUNT_JSON = "{}";
 }
 
-function useInMemoryDailyDocument(initial: Record<string, unknown> = {}) {
-  let stored = { ...initial };
-  const set = vi.fn(async (value: Record<string, unknown>, options?: { merge?: boolean }) => {
-    stored = options?.merge ? { ...stored, ...value } : { ...value };
+function useInMemoryStores(initialDaily: Record<string, unknown> = {}, initialBody: Record<string, unknown> = {}) {
+  let dailyStored = { ...initialDaily };
+  let bodyStored = { ...initialBody };
+  const dailySet = vi.fn(async (value: Record<string, unknown>, options?: { merge?: boolean }) => {
+    dailyStored = options?.merge ? { ...dailyStored, ...value } : { ...value };
   });
-  const doc = vi.fn(() => ({ set }));
+  const bodySet = vi.fn(async (value: Record<string, unknown>, options?: { merge?: boolean }) => {
+    bodyStored = options?.merge ? { ...bodyStored, ...value } : { ...value };
+  });
+  const doc = vi.fn((path: string) => {
+    if (path.includes("/bodyLogs/")) return { set: bodySet };
+    return { set: dailySet };
+  });
   getAdminDb.mockReturnValue({ doc });
-  return { doc, set, stored: () => stored };
+  return {
+    doc,
+    dailySet,
+    bodySet,
+    dailyStored: () => dailyStored,
+    bodyStored: () => bodyStored,
+  };
 }
 
 describe("Apple Health import route", () => {
@@ -49,19 +62,26 @@ describe("Apple Health import route", () => {
   });
 
   it("imports a valid total step count into the existing daily document", async () => {
-    const database = useInMemoryDailyDocument();
+    const database = useInMemoryStores();
 
     const response = await POST(request(validPayload));
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ ok: true, date: "2026-08-29", steps: 5234 });
     expect(database.doc).toHaveBeenCalledWith("users/owner-id/dailyLogs/2026-08-29");
-    expect(database.set).toHaveBeenCalledWith(expect.objectContaining({
+    expect(database.doc).toHaveBeenCalledWith("users/owner-id/bodyLogs/2026-08-29");
+    expect(database.dailySet).toHaveBeenCalledWith(expect.objectContaining({
       date: "2026-08-29",
       steps: 5234,
       source: "apple_health",
       syncedAt: new Date("2026-08-29T15:35:00+08:00"),
       updatedAt: expect.anything(),
+    }), { merge: true });
+    expect(database.bodySet).toHaveBeenCalledWith(expect.objectContaining({
+      date: "2026-08-29",
+      steps: 5234,
+      updatedAt: expect.anything(),
+      createdAt: expect.anything(),
     }), { merge: true });
     expect(response.headers.get("cache-control")).toContain("no-store");
   });
@@ -93,28 +113,38 @@ describe("Apple Health import route", () => {
   });
 
   it("overwrites repeated sync totals instead of accumulating them", async () => {
-    const database = useInMemoryDailyDocument();
+    const database = useInMemoryStores();
 
     await POST(request({ ...validPayload, steps: 3200, syncedAt: "2026-08-29T12:00:00+08:00" }));
     await POST(request({ ...validPayload, steps: 7100, syncedAt: "2026-08-29T18:00:00+08:00" }));
     await POST(request({ ...validPayload, steps: 10300, syncedAt: "2026-08-29T23:50:00+08:00" }));
 
-    expect(database.stored().steps).toBe(10300);
-    expect(database.set).toHaveBeenCalledTimes(3);
-    expect(database.set.mock.calls.every(([, options]) => options?.merge === true)).toBe(true);
+    expect(database.dailyStored().steps).toBe(10300);
+    expect(database.bodyStored().steps).toBe(10300);
+    expect(database.dailySet).toHaveBeenCalledTimes(3);
+    expect(database.bodySet).toHaveBeenCalledTimes(3);
+    expect(database.dailySet.mock.calls.every(([, options]) => options?.merge === true)).toBe(true);
   });
 
   it("preserves unrelated fields on the daily health record", async () => {
-    const database = useInMemoryDailyDocument({ waterMl: 1800, weightKg: 72.4, note: "keep me" });
+    const database = useInMemoryStores(
+      { waterMl: 1800, weightKg: 72.4, note: "keep me" },
+      { weightKg: 72.4, note: "body note" },
+    );
 
     await POST(request(validPayload));
 
-    expect(database.stored()).toMatchObject({
+    expect(database.dailyStored()).toMatchObject({
       waterMl: 1800,
       weightKg: 72.4,
       note: "keep me",
       steps: 5234,
       source: "apple_health",
+    });
+    expect(database.bodyStored()).toMatchObject({
+      weightKg: 72.4,
+      note: "body note",
+      steps: 5234,
     });
   });
 

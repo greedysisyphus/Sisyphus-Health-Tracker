@@ -7,6 +7,7 @@ import {
   canonicalPayloadHash,
   idempotencyDocumentId,
   nextWaterMl,
+  resolveDayBodyMetrics,
   resolveIdempotency,
   totalForEntryData,
 } from "../../../lib/agent-health";
@@ -439,14 +440,28 @@ export async function POST(request: Request) {
       const dates = datesBetween(input.startDate, input.endDate);
       const days = await Promise.all(dates.map(async date => {
         const [entries, daily, body] = await Promise.all([dayRef(db, ownerId, date).collection("entries").get(), dayRef(db, ownerId, date).get(), db.doc(`users/${ownerId}/bodyLogs/${date}`).get()]);
-        return { date, total: totalForEntries(entries.docs), waterMl: daily.data()?.waterMl ?? 0, weightKg: body.data()?.weightKg ?? null, steps: body.data()?.steps ?? null, entries: entries.docs.map(document => document.data()) };
+        const metrics = resolveDayBodyMetrics(daily.data(), body.data());
+        return { date, total: totalForEntries(entries.docs), waterMl: daily.data()?.waterMl ?? 0, weightKg: metrics.weightKg, steps: metrics.steps, entries: entries.docs.map(document => document.data()) };
       }));
       return Response.json({ ok: true, action: input.action, startDate: input.startDate, endDate: input.endDate, days });
     }
-    const entries = await dayRef(db, ownerId, input.date).collection("entries").get();
+    const [entries, daily, body] = await Promise.all([
+      dayRef(db, ownerId, input.date).collection("entries").get(),
+      dayRef(db, ownerId, input.date).get(),
+      db.doc(`users/${ownerId}/bodyLogs/${input.date}`).get(),
+    ]);
     const total = totalForEntries(entries.docs);
-    const daily = await dayRef(db, ownerId, input.date).get();
-    return Response.json({ ok: true, action: input.action, date: input.date, total, waterMl: daily.data()?.waterMl ?? 0, entries: entries.docs.map(document => document.data()) });
+    const metrics = resolveDayBodyMetrics(daily.data(), body.data());
+    return Response.json({
+      ok: true,
+      action: input.action,
+      date: input.date,
+      total,
+      waterMl: daily.data()?.waterMl ?? 0,
+      steps: metrics.steps,
+      weightKg: metrics.weightKg,
+      entries: entries.docs.map(document => document.data()),
+    });
   } catch (error) {
     console.error("Hermes health API failed", error);
     return Response.json({ error: "operation_failed" }, { status: 500 });
