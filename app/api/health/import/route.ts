@@ -55,13 +55,26 @@ export async function POST(request: Request) {
   const input = parsed.data;
   try {
     const db = getAdminDb();
-    await db.doc(`users/${ownerId}/dailyLogs/${input.date}`).set({
+    const now = FieldValue.serverTimestamp();
+    const syncedAt = new Date(input.syncedAt);
+    const dailyPayload = {
       date: input.date,
       steps: input.steps,
       source: input.source,
-      syncedAt: new Date(input.syncedAt),
-      updatedAt: FieldValue.serverTimestamp(),
-    }, { merge: true });
+      syncedAt,
+      updatedAt: now,
+    };
+    const bodyPayload = {
+      date: input.date,
+      steps: input.steps,
+      updatedAt: now,
+      createdAt: now,
+    };
+
+    await Promise.all([
+      db.doc(`users/${ownerId}/dailyLogs/${input.date}`).set(dailyPayload, { merge: true }),
+      db.doc(`users/${ownerId}/bodyLogs/${input.date}`).set(bodyPayload, { merge: true }),
+    ]);
 
     return json({ ok: true, date: input.date, steps: input.steps });
   } catch (error) {

@@ -219,3 +219,19 @@ export function buildHealthEventPlan(input: {
   const total = totalForEntryData([...input.currentEntries, ...entries]);
   return { entries, waterMl, dailySummary: { ...total, waterMl } };
 }
+
+/** Match UI overview: bodyLogs wins, then dailyLogs (Apple Health import lives on dailyLogs). */
+export function resolveDayBodyMetrics(
+  daily?: { steps?: unknown; weightKg?: unknown } | null,
+  body?: { steps?: unknown; weightKg?: unknown } | null,
+): { steps: number | null; weightKg: number | null } {
+  const pickNumber = (primary: unknown, fallback: unknown): number | null => {
+    if (typeof primary === "number" && Number.isFinite(primary)) return primary;
+    if (typeof fallback === "number" && Number.isFinite(fallback)) return fallback;
+    return null;
+  };
+  return {
+    steps: pickNumber(body?.steps, daily?.steps),
+    weightKg: pickNumber(body?.weightKg, daily?.weightKg),
+  };
+}
