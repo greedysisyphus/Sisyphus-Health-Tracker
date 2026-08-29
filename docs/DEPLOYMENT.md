@@ -34,12 +34,14 @@ FIREBASE_ADMIN_SERVICE_ACCOUNT_JSON
 HEALTH_TRACKER_OWNER_ID
 HERMES_API_SECRET
 WIDGET_READ_TOKEN
+HEALTH_IMPORT_TOKEN
 ```
 
 4. 部署後，把 Vercel 網域加入 Firebase Authentication 的 Authorized domains。
 5. 以 Google 登入一次，從瀏覽器主控台或 Firebase Authentication 使用者頁複製 UID，填入 `HEALTH_TRACKER_OWNER_ID`，重新部署。
 6. 產生 32 位元以上的隨機 `HERMES_API_SECRET`，用相同值設定 Hermes 主機環境變數。
 7. 另外產生獨立的長隨機 `WIDGET_READ_TOKEN`，供唯讀 Scriptable widget 使用；不要重用 `HERMES_API_SECRET`。
+8. 另外產生一組 32 位元以上的隨機 `HEALTH_IMPORT_TOKEN`，供 iOS Shortcut 呼叫 `POST /api/health/import`；不要與 `HERMES_API_SECRET` 共用。
 
 ## 驗收順序
 
