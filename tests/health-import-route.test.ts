@@ -86,6 +86,40 @@ describe("Apple Health import route", () => {
     expect(response.headers.get("cache-control")).toContain("no-store");
   });
 
+  it("imports up to seven daily totals in one batch", async () => {
+    const database = useInMemoryStores();
+    const records = [1, 2, 3].map(offset => ({
+      date: `2026-08-${String(29 - offset).padStart(2, "0")}`,
+      steps: offset * 1000,
+      syncedAt: `2026-08-${String(29 - offset).padStart(2, "0")}T22:55:00+08:00`,
+    }));
+
+    const response = await POST(request({ source: "apple_health", records }));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      ok: true,
+      records: records.map(({ date, steps }) => ({ date, steps })),
+    });
+    expect(database.dailySet).toHaveBeenCalledTimes(3);
+    expect(database.bodySet).toHaveBeenCalledTimes(3);
+    for (const record of records) {
+      expect(database.doc).toHaveBeenCalledWith(`users/owner-id/dailyLogs/${record.date}`);
+      expect(database.doc).toHaveBeenCalledWith(`users/owner-id/bodyLogs/${record.date}`);
+    }
+  });
+
+  it("rejects batches larger than seven days or with duplicate dates", async () => {
+    const tooMany = Array.from({ length: 8 }, (_, index) => ({
+      date: `2026-08-${String(index + 1).padStart(2, "0")}`,
+      steps: index,
+      syncedAt: "2026-08-29T22:55:00+08:00",
+    }));
+    expect((await POST(request({ source: "apple_health", records: tooMany }))).status).toBe(400);
+
+    const duplicate = [validPayload, { ...validPayload, steps: 999 }];
+    expect((await POST(request({ source: "apple_health", records: duplicate }))).status).toBe(400);
+  });
   it("rejects an invalid bearer token", async () => {
     const response = await POST(request(validPayload, "wrong-secret"));
 
