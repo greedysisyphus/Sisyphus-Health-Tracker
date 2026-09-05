@@ -260,7 +260,7 @@ export default function Home() {
   const refreshDaily = async () => { if (await loadDaily()) setNotice("已更新當日紀錄。"); };
 
   if (!hasFirebaseConfig) return <SetupScreen />;
-  if (loading && !user) return <main className="setup"><p className="eyebrow">日常營養</p><h1>正在確認登入狀態…</h1></main>;
+  if (loading && !user) return <main className="setup"><p className="eyebrow">日常營養</p><h1>正在確認登入狀態…</h1><p>請稍候，正在安全地連接你的帳號。</p></main>;
   if (!user) return <main className="setup"><p className="eyebrow">日常營養</p><h1>把健康資料放在你自己手中。</h1><p>登入後即可保存飲食、喝水、體重與 Hermes 的自動紀錄。</p><button className="primary" onClick={() => void signInWithPopup(auth!, googleProvider!)}>使用 Google 登入</button></main>;
 
   return <TargetsContext.Provider value={targetState}><main className="app-shell">
@@ -299,7 +299,7 @@ function NavMark({ id }: { id: View }) {
   return <svg className="nav-mark" viewBox="0 0 24 24" aria-hidden="true" {...common}><path d="M4 7h16M4 12h16M4 17h16" /><circle cx="9" cy="7" r="1.7" /><circle cx="15" cy="12" r="1.7" /><circle cx="7" cy="17" r="1.7" /></svg>;
 }
 function Nav({ view, setView, mobile = false }: { view: View; setView: (view: View) => void; mobile?: boolean }) { const items: { id: View; label: string }[] = [{ id: "daily", label: "每日" }, { id: "overview", label: "總覽" }, { id: "trends", label: "趨勢" }, { id: "foods", label: "食物" }, { id: "settings", label: "目標" }]; return <nav className={mobile ? "bottom-nav" : "side-nav"} aria-label="主要功能">{items.map(item => <button key={item.id} className={view === item.id ? "active" : ""} onClick={() => setView(item.id)}><b><NavMark id={item.id} /></b><span>{mobile ? item.label : item.id === "foods" ? "我的食物" : `　${item.label}${item.id === "daily" ? "紀錄" : ""}`}</span></button>)}</nav>; }
-function SetupScreen() { return <main className="setup"><p className="eyebrow">需要連接 Firebase</p><h1>日常營養準備好了。</h1><p>請先設定 Firebase 後重新部署。</p></main>; }
+function SetupScreen() { return <main className="setup"><p className="eyebrow">需要連接 Firebase</p><h1>日常營養準備好了。</h1><p>請先設定 Firebase 環境變數後重新部署，即可開始記錄。</p></main>; }
 function entryNutrition(entry: FoodEntry): Nutrition { const { caloriesKcal, proteinG, carbsG, fatG, fiberG, sugarG, saturatedFatG, transFatG, sodiumMg, potassiumMg, cholesterolMg, caffeineMg } = entry; return { caloriesKcal, proteinG, carbsG, fatG, fiberG, sugarG, saturatedFatG, transFatG, sodiumMg, potassiumMg, cholesterolMg, caffeineMg }; }
 function summaryLine(total: Nutrition) { return `熱量 ${formatNutrition(total.caloriesKcal, "kcal")}｜蛋白質 ${formatNutrition(total.proteinG, "g")}｜碳水 ${formatNutrition(total.carbsG, "g")}｜脂肪 ${formatNutrition(total.fatG, "g")}｜纖維 ${formatNutrition(total.fiberG, "g")}｜鈉 ${formatNutrition(total.sodiumMg, "mg")}`; }
 async function copyPlainText(text: string): Promise<boolean> {
