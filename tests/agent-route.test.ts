@@ -73,3 +73,45 @@ describe("agent route food search migration", () => {
     expect(commit).toHaveBeenCalledOnce();
   });
 });
+
+describe("agent route history export", () => {
+  it("accepts the web export shape and writes imported entries plus summaries", async () => {
+    const set = vi.fn();
+    const deleteDocument = vi.fn();
+    const commit = vi.fn().mockResolvedValue(undefined);
+    const batch = { set, delete: deleteDocument, commit };
+    const entryCollection = { get: vi.fn().mockResolvedValue({ docs: [], size: 0 }), doc: vi.fn((id: string) => ({ path: `users/owner/dailyLogs/2026-08-29/entries/${id}`, id })) };
+    const existingDay = { get: vi.fn().mockResolvedValue({ data: () => ({ waterMl: 1800 }) }), collection: vi.fn(() => entryCollection) };
+    const db = {
+      doc: vi.fn((path: string) => path.includes("dailyLogs/2026-08-29") ? existingDay : { path, ref: { path } }),
+      batch: vi.fn(() => batch),
+    };
+    getAdminDb.mockReturnValue(db);
+
+    const response = await POST(requestFor({
+      action: "replace_history_export",
+      preserveExistingWaterDates: ["2026-08-29"],
+      data: {
+        schema_version: "3.0",
+        daily_records: [{
+          date: "2026-08-29",
+          weight_kg: 72.4,
+          water_ml: null,
+          steps: 5234,
+          meals: [{ meal: "早餐", items: [{ name: "茶葉蛋", quantity: 2, nutrition: { calories_kcal: 140, protein_g: 12, estimated: false } }] }],
+          beverages: [{ name: "無糖豆漿", quantity: 1, volume_ml: 300, nutrition: { calories_kcal: 120, protein_g: 10 } }],
+        }],
+      },
+    }));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ ok: true, action: "replace_history_export", importedDays: 1, importedEntries: 2 });
+    expect(deleteDocument).not.toHaveBeenCalled();
+    expect(set.mock.calls.map(([, value]) => value)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "茶葉蛋", mealType: "其他", caloriesKcal: 140, proteinG: 12, confidence: "high" }),
+      expect.objectContaining({ name: "無糖豆漿", mealType: "飲料", caloriesKcal: 120, proteinG: 10, hydrationMl: 300 }),
+      expect.objectContaining({ totalCaloriesKcal: 260, totalProteinG: 22, entryCount: 2 }),
+    ]));
+    expect(commit).toHaveBeenCalledOnce();
+  });
+});
