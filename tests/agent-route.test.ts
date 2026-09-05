@@ -74,6 +74,21 @@ describe("agent route food search migration", () => {
   });
 });
 
+describe("agent route body metric fallback", () => {
+  it("resolves steps and weight independently across dailyLogs and bodyLogs", async () => {
+    const entries = { get: vi.fn().mockResolvedValue({ docs: [] }) };
+    const daily = { get: vi.fn().mockResolvedValue({ data: () => ({ steps: 4567, weightKg: 73.1 }) }), collection: vi.fn(() => entries) };
+    const body = { get: vi.fn().mockResolvedValue({ data: () => ({ steps: 8123 }) }) };
+    const db = { doc: vi.fn((path: string) => path.includes("/bodyLogs/") ? body : daily) };
+    getAdminDb.mockReturnValue(db);
+
+    const response = await POST(requestFor({ action: "get_daily_summary", date: "2026-08-29" }));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ steps: 8123, weightKg: 73.1 });
+  });
+});
+
 describe("agent route history export", () => {
   it("accepts the web export shape and writes imported entries plus summaries", async () => {
     const set = vi.fn();
