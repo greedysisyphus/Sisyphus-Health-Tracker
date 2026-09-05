@@ -32,7 +32,9 @@ metadata:
 | 週期／趨勢分析 | `get_range_summary` |
 | 更正既有食物 | 先查摘要定位 `entryId`，再 `amend_food` |
 | 刪除食物 | 先查摘要、向使用者確認 exact entry，再 `delete_food` |
-| 常用食物 | 先 `find_foods`，明確要求儲存才 `upsert_food` |
+| 常用食物搜尋 | `find_foods`（非空 query 使用 indexed search tokens；舊資料保留 bounded fallback） |
+| 常用食物 token migration | 僅維護用途：`backfill_food_search_tokens` |
+| 每日摘要 backfill | 僅維護用途：`backfill_daily_summaries`，指定日期陣列 |
 | 歷史營養補齊 | 載入 `references/history-nutrition-backfill.md` |
 | 照片餐點 | 載入 `references/photo-meal-workflow.md` |
 

@@ -86,3 +86,19 @@ Standard mode allows only: `nutrition`, `servings`, `servingWeightG`, `source`, 
 `history_backfill` mode allows only: `nutrition`, `source`, `confidence`, `notes`.
 
 Unknown keys are rejected. Optional fields omitted from `changes` remain unchanged; the server must not synthesize default hydration or overwrite unrelated fields.
+
+## Maintenance actions
+
+These actions are for authenticated maintenance only, not normal Discord logging:
+
+```json
+{"action":"backfill_daily_summaries","dates":["2026-09-04","2026-09-05"]}
+```
+
+The server reads each day's entries and writes the canonical `total*` fields plus `entryCount`. Dates are limited to 1000 per request and writes are chunked below Firestore's 500-operation limit.
+
+```json
+{"action":"backfill_food_search_tokens"}
+```
+
+This migrates existing `users/{ownerId}/foods` documents with normalized substring tokens used by non-empty `find_foods` queries. It is safe to re-run and returns `updatedFoods`; never expose or log the HMAC secret when invoking it.
