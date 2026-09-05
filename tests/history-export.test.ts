@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildHistoryExportDay, validateHistoryExport } from "../lib/history-export";
+import { buildHistoryExportDay, formatHistoryImportNotice, historyExportPreviewFromData, validateHistoryExport } from "../lib/history-export";
 import type { FoodEntry } from "../lib/nutrition";
 
 const validExport = {
@@ -121,5 +121,34 @@ describe("buildHistoryExportDay", () => {
       meals: [],
       beverages: [],
     });
+  });
+});
+
+describe("formatHistoryImportNotice", () => {
+  it("summarizes imported range and counts, and separates refresh failure", () => {
+    const preview = historyExportPreviewFromData({
+      schema_version: "3.0",
+      exported_at: "2026-09-06T00:00:00.000Z",
+      timezone: "Asia/Taipei",
+      date_range: { start: "2026-09-01", end: "2026-09-05" },
+      daily_records: [
+        {
+          date: "2026-09-04",
+          meals: [{ meal: "晚餐", items: [{ name: "便當", nutrition: { calories_kcal: 500 } }, { name: "湯", nutrition: { calories_kcal: 40 } }] }],
+          beverages: [{ name: "茶", nutrition: { calories_kcal: 0 } }],
+        },
+        { date: "2026-09-05", meals: [], beverages: [] },
+      ],
+    });
+
+    expect(preview).toMatchObject({
+      startDate: "2026-09-01",
+      endDate: "2026-09-05",
+      dayCount: 2,
+      entryCount: 2,
+      beverageCount: 1,
+    });
+    expect(formatHistoryImportNotice(preview)).toBe("已匯入 2026-09-01 至 2026-09-05（2 天、餐點 2 筆、飲品 1 杯）。");
+    expect(formatHistoryImportNotice(preview, { refreshFailed: true })).toContain("但畫面重新整理失敗");
   });
 });
