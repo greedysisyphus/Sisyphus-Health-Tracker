@@ -13,7 +13,8 @@ const exportNutrition = z.object({
   potassium_mg: z.number().min(0).nullable().optional(),
   cholesterol_mg: z.number().min(0).nullable().optional(),
   caffeine_mg: z.number().min(0).nullable().optional(),
-}).strict();
+  estimated: z.boolean().optional(),
+}).passthrough();
 
 const exportItem = z.object({
   name: z.string().trim().min(1),
@@ -22,24 +23,27 @@ const exportItem = z.object({
   volume_ml: z.number().positive().optional(),
   note: z.string().max(1000).optional(),
   nutrition: exportNutrition,
-}).strict();
+}).passthrough();
 
 const exportDay = z.object({
   date: z.string().date(),
-  weight_kg: z.number().positive().nullable(),
-  water_ml: z.number().min(0).nullable(),
-  steps: z.number().int().min(0).nullable(),
-  meals: z.array(z.object({ meal: z.string().min(1), items: z.array(exportItem) }).strict()),
-  beverages: z.array(exportItem),
-}).strict();
+  weight_kg: z.number().positive().nullable().optional(),
+  water_ml: z.number().min(0).nullable().optional(),
+  steps: z.number().int().min(0).nullable().optional(),
+  steps_note: z.string().max(1000).optional(),
+  meals: z.array(z.object({ meal: z.string().min(1), items: z.array(exportItem) }).passthrough()).default([]),
+  beverages: z.array(exportItem).default([]),
+}).passthrough();
 
 export const historyExportSchema = z.object({
   schema_version: z.literal("3.0"),
   exported_at: z.string().datetime({ offset: true }),
   timezone: z.string().min(1),
+  profile: z.record(z.string(), z.unknown()).optional(),
+  targets: z.record(z.string(), z.unknown()).optional(),
   date_range: z.object({ start: z.string().date(), end: z.string().date() }).strict(),
   daily_records: z.array(exportDay).min(1),
-}).strict().superRefine((value, context) => {
+}).passthrough().superRefine((value, context) => {
   if (value.date_range.start > value.date_range.end) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["date_range"], message: "start must not be after end" });
   }
@@ -82,8 +86,8 @@ export function validateHistoryExport(value: unknown): HistoryExportValidation {
       dayCount: data.daily_records.length,
       entryCount: data.daily_records.reduce((total, day) => total + day.meals.reduce((sum, meal) => sum + meal.items.length, 0), 0),
       beverageCount: data.daily_records.reduce((total, day) => total + day.beverages.length, 0),
-      waterDayCount: data.daily_records.filter(day => day.water_ml !== null).length,
-      bodyMetricDayCount: data.daily_records.filter(day => day.weight_kg !== null || day.steps !== null).length,
+      waterDayCount: data.daily_records.filter(day => day.water_ml !== null && day.water_ml !== undefined).length,
+      bodyMetricDayCount: data.daily_records.filter(day => (day.weight_kg !== null && day.weight_kg !== undefined) || (day.steps !== null && day.steps !== undefined)).length,
     },
   };
 }

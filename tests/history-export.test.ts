@@ -5,6 +5,8 @@ const validExport = {
   schema_version: "3.0",
   exported_at: "2026-09-05T15:00:00.000Z",
   timezone: "Asia/Taipei",
+  profile: { height_cm: 175 },
+  targets: { caloriesKcal: { min: 1800, max: 2200 } },
   date_range: { start: "2026-09-01", end: "2026-09-05" },
   daily_records: [
     {
@@ -12,10 +14,11 @@ const validExport = {
       weight_kg: 72.4,
       water_ml: 1800,
       steps: 8342,
-      meals: [{ meal: "晚餐", items: [{ name: "便當", quantity: 1, nutrition: { calories_kcal: 545, protein_g: 30 } }] }],
+      steps_note: "Apple Health",
+      meals: [{ meal: "晚餐", items: [{ name: "便當", quantity: 1, nutrition: { calories_kcal: 545, protein_g: 30, estimated: true } }] }],
       beverages: [{ name: "茶", volume_ml: 500, nutrition: { calories_kcal: 0 } }],
     },
-    { date: "2026-09-05", weight_kg: null, water_ml: null, steps: null, meals: [], beverages: [] },
+    { date: "2026-09-05" },
   ],
 };
 
