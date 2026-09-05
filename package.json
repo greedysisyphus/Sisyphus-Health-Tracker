@@ -11,6 +11,7 @@
     "start": "next start",
     "test": "vitest run --config vitest.config.ts",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
+    "production:smoke": "node scripts/production-smoke.mjs",
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
