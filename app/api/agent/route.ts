@@ -14,6 +14,7 @@ import {
 import { getAdminDb } from "../../../lib/firebase-admin";
 import { foodSearchTokens, normalizeFoodCategory } from "../../../lib/nutrition";
 import { dailySummaryFields } from "../../../lib/daily-summary";
+import { getRequestId, logSafeRequestError } from "../../../lib/request-observability";
 
 export const runtime = "nodejs";
 
@@ -148,6 +149,8 @@ const refreshDailySummary = async (db: FirebaseFirestore.Firestore, ownerId: str
 };
 
 export async function POST(request: Request) {
+  const requestId = getRequestId(request);
+  const startedAt = Date.now();
   const raw = await request.text();
   if (!verifyRequest(raw, request)) return Response.json({ error: "unauthorized" }, { status: 401 });
   let body: unknown;
@@ -566,7 +569,7 @@ export async function POST(request: Request) {
       entries: entries.docs.map(document => document.data()),
     });
   } catch (error) {
-    console.error("Hermes health API failed", error);
+    logSafeRequestError("agent", requestId, startedAt, error);
     return Response.json({ error: "operation_failed" }, { status: 500 });
   }
 }
