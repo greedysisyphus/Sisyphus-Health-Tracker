@@ -35,6 +35,8 @@ export default function Home() {
   const [notice, setNotice] = useState("");
   const [view, setView] = useState<View>("daily");
   const [history, setHistory] = useState<DailyOverview[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState("");
   const [savedFoods, setSavedFoods] = useState<SavedFoodSummary[]>([]);
   const [savedFoodsLoading, setSavedFoodsLoading] = useState(Boolean(auth));
   const [savedFoodsError, setSavedFoodsError] = useState("");
@@ -48,6 +50,11 @@ export default function Home() {
   const dailyLoadId = useRef(0);
   const libraryLoadId = useRef(0);
   const historyLoadId = useRef(0);
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(""), 8000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
   const totals = useMemo(() => calculateDailyNutrition(entries), [entries]);
 
   useEffect(() => {
@@ -93,13 +100,18 @@ export default function Home() {
     if (!user) return false;
     const loadId = historyLoadId.current + 1;
     historyLoadId.current = loadId;
+    setHistoryLoading(true);
+    setHistoryError("");
     try {
       const nextHistory = await listDailyOverviews(user.uid, 120, { includeEntries: false });
       if (historyLoadId.current !== loadId) return false;
       setHistory(nextHistory);
       return true;
     } catch {
+      if (historyLoadId.current === loadId) setHistoryError("讀取彙整資料失敗，請再試一次。");
       return false;
+    } finally {
+      if (historyLoadId.current === loadId) setHistoryLoading(false);
     }
   }, [user]);
   useEffect(() => { const timer = window.setTimeout(() => { void loadDaily(); }, 0); return () => window.clearTimeout(timer); }, [loadDaily]);
@@ -255,9 +267,9 @@ export default function Home() {
     <aside className="sidebar"><div className="brand"><i>n</i><span>日常營養</span></div><p className="side-date">飲食、體重與喝水，都會安全地儲存在你的帳號。</p><Nav view={view} setView={setView} /><div className="profile"><div>{(user.displayName ?? user.email ?? "你").slice(0, 1)}</div><span>{user.displayName ?? "我的帳號"}<small>{user.email}</small></span><button className="text-button" onClick={() => void signOut(auth!)}>登出</button></div></aside>
     <section className="content">
       <div className="mobile-topbar"><div className="brand"><i>n</i><span>日常營養</span></div><button className="text-button" onClick={() => void signOut(auth!)}>登出</button></div>
-      {notice && <p className="notice" role="status">{notice}</p>}
+      {notice && <div className="notice" role="status"><span className="notice-copy">{notice}</span><button type="button" className="notice-dismiss" onClick={() => setNotice("")} aria-label="關閉提示">關閉</button></div>}
       {view === "daily" && <DailyView date={date} setDate={setDate} totals={totals} entries={entries} waterMl={waterMl} weightKg={weightKg} steps={steps} loading={loading} lastSyncedAt={lastSyncedAt} savedFoods={savedFoods} setEntryEditor={setEntryEditor} deleteEntry={deleteEntry} saveAsCommon={saveAsCommon} addWater={addWater} quickAddDrink={quickAddDrink} updateWeight={updateWeight} updateSteps={updateSteps} refresh={refreshDaily} exportData={openExport} />}
-      {view === "overview" && <Overview history={history.filter(day => day.entryCount > 0 || day.waterMl > 0 || day.total.caloriesKcal > 0)} openDate={next => { setDate(next); setView("daily"); }} exportData={openExport} />}
+      {view === "overview" && <Overview history={history.filter(day => day.entryCount > 0 || day.waterMl > 0 || day.total.caloriesKcal > 0)} loading={historyLoading} error={historyError} retry={() => void loadHistory()} openDate={next => { setDate(next); setView("daily"); }} exportData={openExport} />}
       {view === "trends" && <Trends history={history} />}
       {view === "foods" && <FoodLibrary date={date} foods={savedFoods} loading={savedFoodsLoading} error={savedFoodsError} retry={() => void loadLibrary().catch(() => undefined)} add={() => setFoodEditor(null)} quickAdd={addSavedFoodToDay} edit={setFoodEditor} remove={deleteFood} mergeDuplicates={mergeDuplicateFoods} applySuggestedHydration={applySuggestedHydration} />}
       {view === "settings" && <TargetsSettings initial={targetState} save={async next => { if (!user) return; await saveHealthTargets(user.uid, { calorieTargetMin: next.caloriesKcal.min, calorieTargetMax: next.caloriesKcal.max, proteinTargetMin: next.proteinG.min, proteinTargetMax: next.proteinG.max, carbTargetMin: next.carbsG.min, carbTargetMax: next.carbsG.max, fatTargetMin: next.fatG.min, fatTargetMax: next.fatG.max, waterTargetMinMl: next.waterMl.min, waterTargetMaxMl: next.waterMl.max, fiberTarget: next.fiberG, sodiumLimit: next.sodiumMg }); setTargets(next); setNotice("已更新每日目標。"); }} />}
@@ -344,7 +356,15 @@ function EntryList({ entries, edit, remove, saveAsCommon }: { entries: FoodEntry
   const renderEntry = (entry: FoodEntry) => { const total = totalForEntry(entry); return <article className="entry" key={entry.id}><div className="food-icon"><FoodMark /></div><div><b>{entry.name}</b><p>{entry.time !== "現在" ? `${entry.time} · ` : ""}{entry.servings} 份{entry.brand ? ` · ${entry.brand}` : ""}</p><EntrySourceBadge entry={entry} /></div><div className="entry-nutrition"><b>{Math.round(total.caloriesKcal)} <small>kcal</small></b><span>P {formatNutrition(total.proteinG, "g")}　C {formatNutrition(total.carbsG, "g")}　F {formatNutrition(total.fatG, "g")}</span></div><div className="entry-actions"><button onClick={() => void saveAsCommon(entry)}>常用</button><button onClick={() => edit(entry)}>編輯</button><button onClick={() => void remove(entry.id)}>刪除</button></div></article>; };
   return <section className="entry-list">{entries.length ? groups.map(group => <section className="meal-group" key={group.meal}><div className="meal-group-heading"><span>{group.meal}</span><small>{group.entries.length} 項</small></div>{group.entries.map(renderEntry)}</section>) : <p className="empty">今天還沒有飲食紀錄。可直接新增一筆，或傳訊息給 Hermes。</p>}</section>;
 }
-function Overview({ history, openDate, exportData }: { history: DailyOverview[]; openDate: (date: string) => void; exportData: () => void }) { return <><header><div><p className="eyebrow">DAILY OVERVIEW</p><h1>每一日，都有脈絡。</h1><p className="muted">顯示已紀錄日期；點選任一列回到完整明細。</p></div><button className="copy-btn" onClick={exportData}>匯出資料</button></header><div className="table-wrap"><table><thead><tr><th>日期</th><th>熱量</th><th>蛋白質</th><th>碳水／脂肪</th><th>纖維／鈉</th><th>飲水</th><th></th></tr></thead><tbody>{history.length ? history.map(day => <tr key={day.date}><td><b>{dateLabel(day.date)}</b><small>{day.entryCount} 項食物紀錄</small></td><td>{formatNutrition(day.total.caloriesKcal, "kcal")}</td><td>{formatNutrition(day.total.proteinG, "g")}</td><td>{formatNutrition(day.total.carbsG, "g")} ／ {formatNutrition(day.total.fatG, "g")}</td><td>{formatNutrition(day.total.fiberG, "g")} ／ {formatNutrition(day.total.sodiumMg, "mg")}</td><td>{day.waterMl} ml</td><td><button className="table-edit" onClick={() => openDate(day.date)}>查看</button></td></tr>) : <tr><td colSpan={7}>還沒有可彙整的紀錄。</td></tr>}</tbody></table></div></> }
+function Overview({ history, loading, error, retry, openDate, exportData }: { history: DailyOverview[]; loading: boolean; error: string; retry: () => void; openDate: (date: string) => void; exportData: () => void }) {
+  return <>
+    <header><div><p className="eyebrow">DAILY OVERVIEW</p><h1>每一日，都有脈絡。</h1><p className="muted">顯示已紀錄日期；點選任一列回到完整明細。</p></div><button className="copy-btn" onClick={exportData}>匯出資料</button></header>
+    {loading ? <div className="overview-state" role="status"><strong>正在載入彙整…</strong><span>稍等一下，正在整理你的每日紀錄。</span></div>
+      : error ? <div className="overview-state" role="alert"><strong>彙整載入失敗</strong><span>{error}</span><button type="button" className="copy-btn" onClick={retry}>再試一次</button></div>
+      : history.length === 0 ? <div className="overview-state"><strong>還沒有可彙整的紀錄</strong><span>從每日頁新增飲食或喝水後，這裡就會出現時間軸。</span></div>
+      : <div className="table-wrap"><table><thead><tr><th>日期</th><th>熱量</th><th>蛋白質</th><th>碳水／脂肪</th><th>纖維／鈉</th><th>飲水</th><th></th></tr></thead><tbody>{history.map(day => <tr key={day.date}><td><b>{dateLabel(day.date)}</b><small>{day.entryCount} 項食物紀錄</small></td><td>{formatNutrition(day.total.caloriesKcal, "kcal")}</td><td>{formatNutrition(day.total.proteinG, "g")}</td><td>{formatNutrition(day.total.carbsG, "g")} ／ {formatNutrition(day.total.fatG, "g")}</td><td>{formatNutrition(day.total.fiberG, "g")} ／ {formatNutrition(day.total.sodiumMg, "mg")}</td><td>{day.waterMl} ml</td><td><button className="table-edit" onClick={() => openDate(day.date)}>查看</button></td></tr>)}</tbody></table></div>}
+  </>;
+}
 function Trends({ history }: { history: DailyOverview[] }) {
   const targets = useContext(TargetsContext);
   const today = formatLocalDate(new Date());
@@ -769,7 +789,14 @@ function ExportSheet({ close, exportRecords, replaceHistory, copyAnalysis, analy
   return <Sheet title="複製給 ChatGPT 分析" close={close}>
     <p className="muted export-copy">先準備資料，再立即複製；這樣 iPhone Safari 可以正常運作。</p>
     <div className="analysis-choices"><button className="save-btn" disabled={!analysisReady} onClick={() => copy(1)}>{analysisPreparing ? "正在準備資料…" : "複製今天資料＋分析指令"}</button><button className="parse-btn" disabled={!analysisReady} onClick={() => copy(3)}>複製最近 3 天資料＋分析指令</button><button className="parse-btn" disabled={!analysisReady} onClick={() => copy(7)}>複製最近 7 天資料＋分析指令</button></div>
-    <p className="export-divider">或下載完整資料</p><div className="form-grid"><label>開始日期<input type="date" value={start} onChange={event => setStart(event.target.value)} /></label><label>結束日期<input type="date" value={end} onChange={event => setEnd(event.target.value)} /></label></div><button className="parse-btn" disabled={working || start > end} onClick={() => void download()}>{working ? "準備中…" : "下載 JSON"}</button>
+    <p className="export-divider">或下載完整資料</p>
+    <div className="export-range-presets" role="group" aria-label="匯出日期快捷">
+      <button type="button" className={start === end && end === today ? "active" : ""} onClick={() => { setStart(today); setEnd(today); }}>今天</button>
+      <button type="button" className={start === formatLocalDate(new Date(new Date(`${today}T12:00:00`).getTime() - 6 * 86400000)) && end === today ? "active" : ""} onClick={() => { setStart(formatLocalDate(new Date(new Date(`${today}T12:00:00`).getTime() - 6 * 86400000))); setEnd(today); }}>近 7 天</button>
+      <button type="button" className={start === formatLocalDate(new Date(new Date(`${today}T12:00:00`).getTime() - 29 * 86400000)) && end === today ? "active" : ""} onClick={() => { setStart(formatLocalDate(new Date(new Date(`${today}T12:00:00`).getTime() - 29 * 86400000))); setEnd(today); }}>近 30 天</button>
+    </div>
+    <div className="form-grid"><label>開始日期<input type="date" value={start} onChange={event => setStart(event.target.value)} /></label><label>結束日期<input type="date" value={end} onChange={event => setEnd(event.target.value)} /></label></div>
+    <button className="parse-btn" disabled={working || start > end} onClick={() => void download()}>{working ? "準備中…" : "下載 JSON"}</button>
     <p className="export-divider">匯入歷史 JSON</p><label className="parse-btn">選擇 schema 3.0 JSON<input type="file" accept="application/json,.json" onChange={event => void chooseImport(event)} hidden /></label>
     {importError && <p className="form-error" role="alert">{importError}</p>}
     {importPreview && importData && <section className="import-preview"><b>匯入預覽</b><p className="muted">{importPreview.startDate} 至 {importPreview.endDate} · {importPreview.dayCount} 天</p><p className="muted">餐點 {importPreview.entryCount} 筆 · 飲品 {importPreview.beverageCount} 杯 · 有水分 {importPreview.waterDayCount} 天 · 有體重／步數 {importPreview.bodyMetricDayCount} 天</p><label><input type="checkbox" checked={preserveWater} onChange={event => setPreserveWater(event.target.checked)} /> 保留匯入檔中沒有水分數值日期的既有飲水紀錄</label><button className="save-btn" disabled={importing} onClick={() => void submitImport()}>{importing ? "匯入中…" : "確認替換歷史資料"}</button></section>}
