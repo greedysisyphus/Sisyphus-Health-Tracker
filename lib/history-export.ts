@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isDrinkCategory, meals, type FoodEntry } from "./nutrition";
 
 const exportNutrition = z.object({
   calories_kcal: z.number().min(0).optional(),
@@ -57,6 +58,7 @@ export const historyExportSchema = z.object({
 });
 
 export type HistoryExport = z.infer<typeof historyExportSchema>;
+export type HistoryExportDay = HistoryExport["daily_records"][number];
 
 export type HistoryExportPreview = {
   startDate: string;
@@ -71,6 +73,54 @@ export type HistoryExportPreview = {
 export type HistoryExportValidation =
   | { ok: true; data: HistoryExport; preview: HistoryExportPreview }
   | { ok: false; error: string };
+
+export type HistoryExportDayInput = {
+  date: string;
+  waterMl?: number | null;
+  weightKg?: number | null;
+  steps?: number | null;
+  entries: FoodEntry[];
+};
+
+/** Map one loaded day (with entries) into the schema 3.0 export day shape. */
+export function buildHistoryExportDay(day: HistoryExportDayInput): HistoryExportDay {
+  const toExportItem = (entry: FoodEntry) => ({
+    name: entry.name,
+    quantity: entry.servings,
+    weight_g: entry.servingWeightG ?? undefined,
+    volume_ml: entry.hydrationMl || undefined,
+    note: entry.notes ?? undefined,
+    nutrition: {
+      calories_kcal: entry.caloriesKcal,
+      protein_g: entry.proteinG,
+      fat_g: entry.fatG,
+      carbohydrate_g: entry.carbsG,
+      sugar_g: entry.sugarG,
+      fiber_g: entry.fiberG,
+      saturated_fat_g: entry.saturatedFatG,
+      trans_fat_g: entry.transFatG,
+      sodium_mg: entry.sodiumMg,
+      potassium_mg: entry.potassiumMg,
+      cholesterol_mg: entry.cholesterolMg,
+      caffeine_mg: entry.caffeineMg,
+      estimated: entry.confidence !== "high",
+    },
+  });
+  const isBeverage = (entry: FoodEntry) => entry.mealType === "飲料" || isDrinkCategory(entry.category, entry.hydrationMl, entry.name);
+  const beverages = day.entries.filter(isBeverage).map(toExportItem);
+  const mealEntries = day.entries.filter(entry => !isBeverage(entry));
+  const mealGroups = meals
+    .map(meal => ({ meal, items: mealEntries.filter(entry => entry.mealType === meal).map(toExportItem) }))
+    .filter(group => group.items.length);
+  return {
+    date: day.date,
+    weight_kg: day.weightKg ?? null,
+    water_ml: day.waterMl ?? null,
+    steps: day.steps ?? null,
+    meals: mealGroups,
+    beverages,
+  };
+}
 
 export function validateHistoryExport(value: unknown): HistoryExportValidation {
   const parsed = historyExportSchema.safeParse(value);

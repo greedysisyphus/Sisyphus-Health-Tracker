@@ -6,7 +6,7 @@ import { auth, googleProvider, hasFirebaseConfig } from "../lib/firebase";
 import { calculateDailyNutrition, calculateHydrationSummary, calculateSevenDayAverage, categoryGroupOf, emptyNutrition, foodCategoryGroupLabel, foodCategoryGroups, formatLocalDate, formatNutrition, isDrinkCategory, meals, normalizeFoodCategory, parseNonNegativeNumber, totalForEntry, type FoodCategoryGroupId, type FoodEntry, type MealType, type Nutrition } from "../lib/nutrition";
 import { buildWeightTrendChart, collectWeightSamples } from "../lib/weight-trend";
 import { resolveDayBodyMetrics } from "../lib/agent-health";
-import { validateHistoryExport, type HistoryExport, type HistoryExportPreview } from "../lib/history-export";
+import { buildHistoryExportDay, validateHistoryExport, type HistoryExport, type HistoryExportPreview } from "../lib/history-export";
 import { getBodyLog, getDailyLog, getUserProfile, listDailyEntries, listDailyOverviews, listFoods, mergeSavedFoodDuplicates, removeEntry, removeSavedFood, saveBodyLog, saveEntry, saveHealthTargets, saveSavedFood, saveWater, type DailyOverview, type SavedFoodInput, type SavedFoodSummary } from "../services/health-service";
 
 type View = "daily" | "overview" | "trends" | "foods" | "settings";
@@ -169,15 +169,13 @@ export default function Home() {
   const saveAsCommon = async (entry: FoodEntry) => { await saveFood({ id: crypto.randomUUID(), name: entry.name, brand: entry.brand, category: normalizeFoodCategory(entry.category, entry.name), servingWeightG: entry.servingWeightG, hydrationMlPerServing: entry.servings > 0 ? entry.hydrationMl / entry.servings : 0, nutrition: { ...entryNutrition(entry) }, favorite: true, notes: entry.notes }); };
   const exportRecords = async (startDate: string, endDate: string) => {
     if (!user) return;
-    const [days, profile] = await Promise.all([listDailyOverviews(user.uid, 365), getUserProfile(user.uid)]);
-    const records = days.filter(day => day.date >= startDate && day.date <= endDate).sort((a, b) => a.date.localeCompare(b.date)).map(day => {
-      const toExportItem = (entry: FoodEntry) => ({ name: entry.name, quantity: entry.servings, weight_g: entry.servingWeightG ?? undefined, volume_ml: entry.hydrationMl || undefined, note: entry.notes ?? undefined, nutrition: { calories_kcal: entry.caloriesKcal, protein_g: entry.proteinG, fat_g: entry.fatG, carbohydrate_g: entry.carbsG, sugar_g: entry.sugarG, fiber_g: entry.fiberG, saturated_fat_g: entry.saturatedFatG, trans_fat_g: entry.transFatG, sodium_mg: entry.sodiumMg, potassium_mg: entry.potassiumMg, cholesterol_mg: entry.cholesterolMg, caffeine_mg: entry.caffeineMg, estimated: entry.confidence !== "high" } });
-      const isBeverage = (entry: FoodEntry) => entry.mealType === "飲料" || isDrinkCategory(entry.category, entry.hydrationMl, entry.name);
-      const beverages = day.entries.filter(isBeverage).map(toExportItem);
-      const mealEntries = day.entries.filter(entry => !isBeverage(entry));
-      const mealGroups = meals.map(meal => ({ meal, items: mealEntries.filter(entry => entry.mealType === meal).map(toExportItem) })).filter(group => group.items.length);
-      return { date: day.date, weight_kg: day.weightKg ?? null, water_ml: day.waterMl, steps: day.steps ?? null, meals: mealGroups, beverages };
-    });
+    // Overview lists omit entries once denormalized totals exist; export must load entries per day.
+    const [days, profile] = await Promise.all([listDailyOverviews(user.uid, 365, { includeEntries: false }), getUserProfile(user.uid)]);
+    const selected = days.filter(day => day.date >= startDate && day.date <= endDate).sort((a, b) => a.date.localeCompare(b.date));
+    const records = await Promise.all(selected.map(async day => {
+      const entries = await listDailyEntries(user.uid, day.date);
+      return buildHistoryExportDay({ date: day.date, waterMl: day.waterMl, weightKg: day.weightKg, steps: day.steps, entries });
+    }));
     const payload = { schema_version: "3.0", exported_at: new Date().toISOString(), timezone: "Asia/Taipei", profile, targets: targetState, date_range: { start: startDate, end: endDate }, daily_records: records };
     const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" })); const link = document.createElement("a"); link.href = url; link.download = `health-records_${startDate}_to_${endDate}.json`; link.click(); URL.revokeObjectURL(url);
   };
@@ -194,12 +192,18 @@ export default function Home() {
     if (!user) return;
     setAnalysisPreparing(true);
     try {
-      const allDays = await listDailyOverviews(user.uid, 365);
       const end = formatLocalDate(new Date());
+      const start7 = formatLocalDate(new Date(new Date(`${end}T12:00:00`).getTime() - 6 * 86400000));
+      const summaries = await listDailyOverviews(user.uid, 30, { includeEntries: false });
+      const recent = summaries.filter(day => day.date >= start7 && day.date <= end).sort((a, b) => a.date.localeCompare(b.date));
+      const records = await Promise.all(recent.map(async day => ({
+        ...day,
+        entries: await listDailyEntries(user.uid, day.date),
+      })));
       const makeText = (days: 1 | 3 | 7) => {
         const start = formatLocalDate(new Date(new Date(`${end}T12:00:00`).getTime() - (days - 1) * 86400000));
-        const records = allDays.filter(day => day.date >= start && day.date <= end).sort((a, b) => a.date.localeCompare(b.date));
-        const recordsText = records.map(day => `【${day.date}】\n${summaryLine(day.total)}\n水分 ${day.waterMl} ml｜體重 ${day.weightKg ?? "未記錄"} kg｜步數 ${day.steps ?? "未記錄"}\n食物：${day.entries.map(entry => `${entry.name}（${formatNutrition(totalForEntry(entry).caloriesKcal, "kcal")}）`).join("、") || "未記錄"}`).join("\n\n") || "沒有已記錄資料";
+        const windowRecords = records.filter(day => day.date >= start && day.date <= end);
+        const recordsText = windowRecords.map(day => `【${day.date}】\n${summaryLine(day.total)}\n水分 ${day.waterMl} ml｜體重 ${day.weightKg ?? "未記錄"} kg｜步數 ${day.steps ?? "未記錄"}\n食物：${day.entries.map(entry => `${entry.name}（${formatNutrition(totalForEntry(entry).caloriesKcal, "kcal")}）`).join("、") || "未記錄"}`).join("\n\n") || "沒有已記錄資料";
         return `請分析以下${days === 1 ? "今天" : `最近 ${days} 天`}健康紀錄。目標：減脂、改善 LDL、控制血壓、保留肌肉。請評估熱量、蛋白質、纖維、鈉、水分、咖啡因與體重趨勢，說明資料缺漏，並給 3 個可執行建議。\n\n${recordsText}`;
       };
       setAnalysisTexts({ 1: makeText(1), 3: makeText(3), 7: makeText(7) });
