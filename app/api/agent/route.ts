@@ -103,6 +103,34 @@ const datesBetween = (startDate: string, endDate: string) => { const dates: stri
 const totalForEntries = (entries: FirebaseFirestore.QueryDocumentSnapshot[]) => totalForEntryData(entries.map(document => document.data()));
 const totalHydrationForEntries = (entries: FirebaseFirestore.QueryDocumentSnapshot[]) =>
   entries.reduce((total, document) => total + Number(document.data().hydrationMl ?? 0), 0);
+
+const MAX_BATCH_OPERATIONS = 450;
+const createChunkedBatch = (db: FirebaseFirestore.Firestore) => {
+  const batches: FirebaseFirestore.WriteBatch[] = [db.batch()];
+  let operationCount = 0;
+  const current = () => batches[batches.length - 1];
+  const next = () => {
+    if (operationCount >= MAX_BATCH_OPERATIONS) {
+      batches.push(db.batch());
+      operationCount = 0;
+    }
+    operationCount += 1;
+    return current();
+  };
+  return {
+    set(ref: FirebaseFirestore.DocumentReference, data: FirebaseFirestore.DocumentData, options?: FirebaseFirestore.SetOptions) {
+      if (options) next().set(ref, data, options);
+      else next().set(ref, data);
+    },
+    delete(ref: FirebaseFirestore.DocumentReference) {
+      next().delete(ref);
+    },
+    async commit() {
+      for (const batch of batches) await batch.commit();
+    },
+  };
+};
+
 const dailySummaryForDate = async (db: FirebaseFirestore.Firestore, ownerId: string, date: string) => {
   const [entries, daily] = await Promise.all([
     dayRef(db, ownerId, date).collection("entries").get(),
@@ -287,7 +315,7 @@ export async function POST(request: Request) {
       return Response.json({ ok: true, action: input.action, dailySummary: await dailySummaryForDate(db, ownerId, input.date) });
     }
     if (input.action === "import_history") {
-      const batch = db.batch();
+      const batch = createChunkedBatch(db);
       const imported = input.data;
       const profile = {
         heightCm: imported.user?.height_cm,
@@ -367,7 +395,7 @@ export async function POST(request: Request) {
       return Response.json({ ok: true, action: input.action, importedDays: imported.records.length, importedEntries: foodCount });
     }
     if (input.action === "replace_history_export") {
-      const batch = db.batch();
+      const batch = createChunkedBatch(db);
       const records = input.data.daily_records;
       let importedEntries = 0;
       for (const record of records) {
