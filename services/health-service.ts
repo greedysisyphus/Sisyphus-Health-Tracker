@@ -1,6 +1,6 @@
 import { collection, deleteDoc, doc, getDoc, getDocs, increment, limit, orderBy, query, runTransaction, serverTimestamp, setDoc } from "firebase/firestore";
 import { db } from "../lib/firebase";
-import { calculateDailyNutrition, emptyNutrition, normalizeFoodRecord, type FoodEntry, type Nutrition } from "../lib/nutrition";
+import { calculateDailyNutrition, emptyNutrition, foodSearchTokens, normalizeFoodRecord, type FoodEntry, type Nutrition } from "../lib/nutrition";
 import { dailySummaryFields, nutritionFromDailyData } from "../lib/daily-summary";
 import type { BodyLog, DailyLog } from "../types/models";
 
@@ -181,6 +181,8 @@ export async function saveSavedFood(userId: string, food: SavedFoodInput): Promi
   await setDoc(doc(db, `users/${userId}/foods/${id}`), {
     ...food,
     id,
+    category: food.category,
+    searchTokens: foodSearchTokens(food.name, food.brand, food.category),
     useCount: Math.max(food.useCount ?? 0, existing?.useCount ?? 0),
     updatedAt: serverTimestamp(),
     ...(existing ? {} : { createdAt: serverTimestamp() }),

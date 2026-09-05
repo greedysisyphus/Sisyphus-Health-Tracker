@@ -74,6 +74,7 @@ export const actionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("amend_food"), date: z.string().date(), entryId: z.string().min(1), mode: z.enum(["standard", "history_backfill"]).default("standard"), changes: amendChanges }),
   z.object({ action: z.literal("delete_food"), date: z.string().date(), entryId: z.string().min(1) }),
   z.object({ action: z.literal("upsert_food"), food: z.object({ id: z.string().min(1).optional(), name: z.string().min(1), brand: z.string().nullable().optional(), category: z.string().nullable().optional(), servingWeightG: z.number().min(0).nullable().optional(), hydrationMlPerServing: z.number().min(0).max(10000).default(0), nutrition, favorite: z.boolean().default(false), notes: z.string().max(1000).nullable().optional() }) }),
+  z.object({ action: z.literal("backfill_food_search_tokens") }),
   z.object({ action: z.literal("find_foods"), query: z.string().max(200).default(""), limit: z.number().int().min(1).max(50).default(10) }),
   z.object({ action: z.literal("log_water"), date: z.string().date(), addMl: z.number().positive().max(10000) }),
   z.object({ action: z.literal("log_body"), date: z.string().date(), weightKg: z.number().positive().max(500).optional(), waistCm: z.number().positive().max(300).optional(), bodyFatPercent: z.number().min(0).max(100).optional(), sleepHours: z.number().min(0).max(24).optional(), steps: z.number().int().min(0).max(100000).optional(), note: z.string().max(1000).optional() }).refine(value => Object.keys(value).some(key => !["action", "date"].includes(key))),
@@ -288,6 +289,19 @@ export async function POST(request: Request) {
         if (hydrationMl) transaction.set(dayRef(db, ownerId, input.date), { date: input.date, waterMl: nextWaterMl(Number(daily.data()?.waterMl ?? 0), hydrationMl, 0, totalHydrationForEntries(allEntries.docs)), updatedAt: now, createdAt: now }, { merge: true });
       });
       return Response.json({ ok: true, action: input.action, entryId: input.entryId, dailySummary: await refreshDailySummary(db, ownerId, input.date) });
+    }
+    if (input.action === "backfill_food_search_tokens") {
+      const foods = await db.collection(`users/${ownerId}/foods`).get();
+      const batch = createChunkedBatch(db);
+      for (const document of foods.docs) {
+        const food = document.data();
+        batch.set(document.ref, {
+          searchTokens: foodSearchTokens(food.name, food.brand, food.category),
+          updatedAt: now,
+        }, { merge: true });
+      }
+      await batch.commit();
+      return Response.json({ ok: true, action: input.action, updatedFoods: foods.size });
     }
     if (input.action === "upsert_food") {
       const id = input.food.id ?? crypto.randomUUID();
