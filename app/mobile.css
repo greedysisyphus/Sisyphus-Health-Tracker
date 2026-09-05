@@ -1,27 +1,35 @@
 /* Overrides for a comfortable phone-sized health log. */
-:root { --ink: #26353a; --muted: #73838a; --paper: #f7f8f6; --line: #e0e8e7; --sage: #7ea9b1; --sage-dark: #3f6f7a; --sage-pale: #ddecef; --ochre: #d99a6c; --coral: #d98272; --ring-track: #eaf0f0; }
-body { background: var(--paper); }
-.sidebar { background: #fbfcfc; border-right-color: #e1e9e8; box-shadow: 12px 0 32px #263c4208; }
-.brand i { border-radius: 50%; box-shadow: 0 5px 13px #3f6f7a30; }
+:root { --ink: #1f2a27; --muted: #6b756f; --paper: #f6f5f1; --surface: #ffffff; --line: rgba(31,42,39,.10); --sage: #6f9a8d; --sage-dark: #2f5d53; --sage-pale: #e7f0eb; --ochre: #c9923d; --coral: #c86b5a; --ring-track: #edf0ed; --shadow-soft: 0 1px 2px rgba(31,42,39,.04), 0 8px 24px rgba(31,42,39,.06); --shadow-card: 0 1px 1px rgba(31,42,39,.03), 0 10px 28px rgba(31,42,39,.07); }
+body {
+  background:
+    radial-gradient(1000px 420px at 0% -5%, #e4eef0 0%, transparent 55%),
+    radial-gradient(800px 380px at 100% 0%, #f4eee6 0%, transparent 48%),
+    var(--paper);
+  font-family: var(--font-sans), var(--font-cjk), Inter, "Noto Sans TC", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+.sidebar { background: rgba(255,255,255,.92); backdrop-filter: blur(10px); border-right-color: var(--line); box-shadow: 12px 0 32px rgba(31,42,39,.04); }
+.brand i { border-radius: 12px; box-shadow: 0 8px 18px rgba(47,93,83,.22); }
 .side-date { line-height: 1.9; }
 .sidebar nav { gap: 8px; }
-.sidebar nav button { border-radius: 14px; padding: 13px 12px; transition: background-color 160ms ease, color 160ms ease; }
-.sidebar nav button.active { box-shadow: inset 0 0 0 1px #cfe2e6; }
+.sidebar nav button { border-radius: 14px; padding: 13px 12px; transition: background-color 160ms ease, color 160ms ease, transform 140ms ease; }
+.sidebar nav button.active { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sage-dark) 18%, white); background: var(--sage-pale); color: var(--sage-dark); font-weight: 600; }
 .content { max-width: 1220px; }
 header { margin-bottom: 28px; }
-h1 { letter-spacing: -1.7px; line-height: 1.12; }
-.muted { line-height: 1.65; }
-.eyebrow { color: #5b858e; }
-.primary, .save-btn { border-radius: 999px; box-shadow: 0 7px 15px #3f6f7a24; transition: transform 140ms ease, box-shadow 140ms ease; }
+h1 { letter-spacing: -0.04em; line-height: 1.12; font-weight: 700; }
+.muted { line-height: 1.65; color: var(--muted); }
+.eyebrow { color: color-mix(in srgb, var(--sage-dark) 70%, var(--muted)); letter-spacing: .08em; font-weight: 600; }
+.primary, .save-btn { border-radius: 999px; box-shadow: 0 8px 18px rgba(47,93,83,.18); transition: transform 140ms ease, box-shadow 140ms ease, filter 140ms ease; }
+.primary:hover, .save-btn:hover { filter: brightness(1.03); }
 .primary:active, .save-btn:active { box-shadow: none; transform: translateY(1px); }
 .copy-btn, .quick-row button { border-radius: 999px; }
+.notice { margin-bottom: 18px; }
 .sync-status { color: var(--muted); font-size: 11px; white-space: nowrap; }
 .refresh-btn { align-items: center; background: #fff; border: 1px solid var(--line); border-radius: 999px; color: var(--sage-dark); cursor: pointer; display: inline-flex; font-size: 12px; gap: 5px; padding: 10px 12px; transition: background-color 140ms ease, transform 140ms ease; white-space: nowrap; }
 .refresh-btn span { font-size: 17px; line-height: .8; }
 .refresh-btn:active:not(:disabled) { background: var(--sage-pale); transform: scale(.97); }
 .refresh-btn:disabled { cursor: wait; opacity: .6; }
 .date-bar button, .date-bar label { border-radius: 12px; }
-.hero-card { background: linear-gradient(135deg, #3f6f7a 0%, #6d9aa2 100%); border-radius: 28px; box-shadow: 0 18px 34px #3f6f7a1d; min-height: 200px; padding: 34px 38px; }
+.hero-card { background: linear-gradient(135deg, #2f5d53 0%, #5f8f86 52%, #8fb4a8 100%); border-radius: 28px; box-shadow: 0 20px 40px rgba(47,93,83,.22); min-height: 200px; padding: 34px 38px; }
 .hero-card .calorie strong { font-family: Georgia, "Noto Serif TC", serif; font-size: 52px; letter-spacing: -2px; }
 .hero-card .meter { background: #ffffff2b; height: 8px; }
 .hero-card .meter i { background: #d9dfb9; }
