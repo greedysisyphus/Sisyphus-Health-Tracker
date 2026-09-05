@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "crypto";
 import { resolveDayBodyMetrics, totalForEntryData } from "../../../../lib/agent-health";
 import { getAdminDb } from "../../../../lib/firebase-admin";
+import { getRequestId, logSafeRequestError } from "../../../../lib/request-observability";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,6 +35,8 @@ function taipeiDate(): string {
 }
 
 export async function GET(request: Request) {
+  const requestId = getRequestId(request);
+  const startedAt = Date.now();
   const ownerId = process.env.HEALTH_TRACKER_OWNER_ID;
   if (!process.env.WIDGET_READ_TOKEN || !ownerId || !process.env.FIREBASE_ADMIN_SERVICE_ACCOUNT_JSON) {
     return json({ error: "server_not_configured" }, 500);
@@ -72,7 +75,7 @@ export async function GET(request: Request) {
       weightKg: metrics.weightKg,
     });
   } catch (error) {
-    console.error("Widget health API failed", error);
+    logSafeRequestError("widget", requestId, startedAt, error);
     return json({ error: "operation_failed" }, 500);
   }
 }

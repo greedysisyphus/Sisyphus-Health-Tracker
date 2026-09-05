@@ -2,6 +2,7 @@ import { createHash, timingSafeEqual } from "crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { z } from "zod";
 import { getAdminDb } from "../../../../lib/firebase-admin";
+import { getRequestId, logSafeRequestError } from "../../../../lib/request-observability";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,6 +46,8 @@ function authorized(request: Request, secret: string): boolean {
 }
 
 export async function POST(request: Request) {
+  const requestId = getRequestId(request);
+  const startedAt = Date.now();
   const token = process.env.HEALTH_IMPORT_TOKEN;
   const ownerId = process.env.HEALTH_TRACKER_OWNER_ID;
   if (!token || !ownerId || !process.env.FIREBASE_ADMIN_SERVICE_ACCOUNT_JSON) {
@@ -106,7 +109,7 @@ export async function POST(request: Request) {
     return json(response);
   } catch (error) {
     if (error instanceof Error && error.message === "sync_id_conflict") return json({ error: "sync_id_conflict" }, 409);
-    console.error("Apple Health import failed", error);
+    logSafeRequestError("health-import", requestId, startedAt, error);
     return json({ error: "operation_failed" }, 500);
   }
 }
