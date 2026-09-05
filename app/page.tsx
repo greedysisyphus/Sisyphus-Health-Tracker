@@ -6,6 +6,7 @@ import { auth, googleProvider, hasFirebaseConfig } from "../lib/firebase";
 import { calculateDailyNutrition, calculateHydrationSummary, calculateSevenDayAverage, categoryGroupOf, emptyNutrition, foodCategoryGroupLabel, foodCategoryGroups, formatLocalDate, formatNutrition, isDrinkCategory, meals, normalizeFoodCategory, parseNonNegativeNumber, totalForEntry, type FoodCategoryGroupId, type FoodEntry, type MealType, type Nutrition } from "../lib/nutrition";
 import { buildWeightTrendChart, collectWeightSamples } from "../lib/weight-trend";
 import { resolveDayBodyMetrics } from "../lib/agent-health";
+import { validateHistoryExport, type HistoryExport, type HistoryExportPreview } from "../lib/history-export";
 import { getBodyLog, getDailyLog, getUserProfile, listDailyEntries, listDailyOverviews, listFoods, mergeSavedFoodDuplicates, removeEntry, removeSavedFood, saveBodyLog, saveEntry, saveHealthTargets, saveSavedFood, saveWater, type DailyOverview, type SavedFoodInput, type SavedFoodSummary } from "../services/health-service";
 
 type View = "daily" | "overview" | "trends" | "foods" | "settings";
@@ -180,6 +181,15 @@ export default function Home() {
     const payload = { schema_version: "3.0", exported_at: new Date().toISOString(), timezone: "Asia/Taipei", profile, targets: targetState, date_range: { start: startDate, end: endDate }, daily_records: records };
     const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" })); const link = document.createElement("a"); link.href = url; link.download = `health-records_${startDate}_to_${endDate}.json`; link.click(); URL.revokeObjectURL(url);
   };
+  const replaceHistory = async (data: HistoryExport, preserveExistingWaterDates: string[]) => {
+    if (!user) throw new Error("尚未登入");
+    const token = await user.getIdToken();
+    const response = await fetch("/api/history/replace", { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ data, preserveExistingWaterDates }) });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(typeof result.error === "string" ? result.error : "history_replace_failed");
+    await loadDaily();
+    setNotice(`已匯入 ${data.daily_records.length} 天的歷史資料。`);
+  };
   const prepareChatGPTAnalysis = async () => {
     if (!user) return;
     setAnalysisPreparing(true);
@@ -222,7 +232,7 @@ export default function Home() {
     </section>
     {entryEditor !== undefined && <EntryEditor initial={entryEditor} savedFoods={savedFoods} close={() => setEntryEditor(undefined)} save={saveDailyEntry} />}
     {foodEditor !== undefined && <SavedFoodEditor initial={foodEditor} close={() => setFoodEditor(undefined)} save={saveFood} />}
-    {exporting && <ExportSheet close={() => setExporting(false)} exportRecords={exportRecords} copyAnalysis={copyChatGPTAnalysis} analysisReady={Boolean(analysisTexts[1])} analysisPreparing={analysisPreparing} />}
+    {exporting && <ExportSheet close={() => setExporting(false)} exportRecords={exportRecords} replaceHistory={replaceHistory} copyAnalysis={copyChatGPTAnalysis} analysisReady={Boolean(analysisTexts[1])} analysisPreparing={analysisPreparing} />}
     <Nav view={view} setView={setView} mobile />
   </main></TargetsContext.Provider>;
 }
@@ -692,4 +702,45 @@ function Sheet({ title, close, children, footer }: { title: string; close: () =>
     </div>
   );
 }
-function ExportSheet({ close, exportRecords, copyAnalysis, analysisReady, analysisPreparing }: { close: () => void; exportRecords: (start: string, end: string) => Promise<void>; copyAnalysis: (days: 1 | 3 | 7) => Promise<boolean>; analysisReady: boolean; analysisPreparing: boolean }) { const today = formatLocalDate(new Date()); const [start, setStart] = useState(formatLocalDate(new Date(new Date(`${today}T12:00:00`).getTime() - 6 * 86400000))); const [end, setEnd] = useState(today); const [working, setWorking] = useState(false); const download = async () => { setWorking(true); try { await exportRecords(start, end); } finally { setWorking(false); } }; const copy = (days: 1 | 3 | 7) => { void copyAnalysis(days); }; return <Sheet title="複製給 ChatGPT 分析" close={close}><p className="muted export-copy">先準備資料，再立即複製；這樣 iPhone Safari 可以正常運作。</p><div className="analysis-choices"><button className="save-btn" disabled={!analysisReady} onClick={() => copy(1)}>{analysisPreparing ? "正在準備資料…" : "複製今天資料＋分析指令"}</button><button className="parse-btn" disabled={!analysisReady} onClick={() => copy(3)}>複製最近 3 天資料＋分析指令</button><button className="parse-btn" disabled={!analysisReady} onClick={() => copy(7)}>複製最近 7 天資料＋分析指令</button></div><p className="export-divider">或下載完整資料</p><div className="form-grid"><label>開始日期<input type="date" value={start} onChange={event => setStart(event.target.value)} /></label><label>結束日期<input type="date" value={end} onChange={event => setEnd(event.target.value)} /></label></div><button className="parse-btn" disabled={working || start > end} onClick={() => void download()}>{working ? "準備中…" : "下載 JSON"}</button></Sheet> }
+function ExportSheet({ close, exportRecords, replaceHistory, copyAnalysis, analysisReady, analysisPreparing }: { close: () => void; exportRecords: (start: string, end: string) => Promise<void>; replaceHistory: (data: HistoryExport, preserveExistingWaterDates: string[]) => Promise<void>; copyAnalysis: (days: 1 | 3 | 7) => Promise<boolean>; analysisReady: boolean; analysisPreparing: boolean }) {
+  const today = formatLocalDate(new Date());
+  const [start, setStart] = useState(formatLocalDate(new Date(new Date(`${today}T12:00:00`).getTime() - 6 * 86400000)));
+  const [end, setEnd] = useState(today);
+  const [working, setWorking] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState("");
+  const [importData, setImportData] = useState<HistoryExport>();
+  const [importPreview, setImportPreview] = useState<HistoryExportPreview>();
+  const [preserveWater, setPreserveWater] = useState(true);
+  const download = async () => { setWorking(true); try { await exportRecords(start, end); } finally { setWorking(false); } };
+  const copy = (days: 1 | 3 | 7) => { void copyAnalysis(days); };
+  const chooseImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    setImportData(undefined); setImportPreview(undefined); setImportError("");
+    if (!file) return;
+    try {
+      const parsed = validateHistoryExport(JSON.parse(await file.text()));
+      if (!parsed.ok) { setImportError(parsed.error); return; }
+      setImportData(parsed.data); setImportPreview(parsed.preview);
+    } catch { setImportError("無法讀取 JSON 檔案，請確認檔案內容正確。"); }
+  };
+  const submitImport = async () => {
+    if (!importData || !importPreview) return;
+    const preserveDates = preserveWater ? importData.daily_records.filter(day => day.water_ml === null || day.water_ml === undefined).map(day => day.date) : [];
+    const confirmed = window.confirm(`即將替換 ${importPreview.startDate} 至 ${importPreview.endDate} 的歷史資料（${importPreview.dayCount} 天、${importPreview.entryCount} 筆餐點、${importPreview.beverageCount} 杯飲品）。此操作會刪除範圍內的歷史匯入紀錄，確定繼續嗎？`);
+    if (!confirmed) return;
+    setImporting(true); setImportError("");
+    try { await replaceHistory(importData, preserveDates); close(); }
+    catch { setImportError("匯入失敗，原有資料未完成替換，請稍後再試。"); }
+    finally { setImporting(false); }
+  };
+  return <Sheet title="複製給 ChatGPT 分析" close={close}>
+    <p className="muted export-copy">先準備資料，再立即複製；這樣 iPhone Safari 可以正常運作。</p>
+    <div className="analysis-choices"><button className="save-btn" disabled={!analysisReady} onClick={() => copy(1)}>{analysisPreparing ? "正在準備資料…" : "複製今天資料＋分析指令"}</button><button className="parse-btn" disabled={!analysisReady} onClick={() => copy(3)}>複製最近 3 天資料＋分析指令</button><button className="parse-btn" disabled={!analysisReady} onClick={() => copy(7)}>複製最近 7 天資料＋分析指令</button></div>
+    <p className="export-divider">或下載完整資料</p><div className="form-grid"><label>開始日期<input type="date" value={start} onChange={event => setStart(event.target.value)} /></label><label>結束日期<input type="date" value={end} onChange={event => setEnd(event.target.value)} /></label></div><button className="parse-btn" disabled={working || start > end} onClick={() => void download()}>{working ? "準備中…" : "下載 JSON"}</button>
+    <p className="export-divider">匯入歷史 JSON</p><label className="parse-btn">選擇 schema 3.0 JSON<input type="file" accept="application/json,.json" onChange={event => void chooseImport(event)} hidden /></label>
+    {importError && <p className="form-error" role="alert">{importError}</p>}
+    {importPreview && importData && <section className="import-preview"><b>匯入預覽</b><p className="muted">{importPreview.startDate} 至 {importPreview.endDate} · {importPreview.dayCount} 天</p><p className="muted">餐點 {importPreview.entryCount} 筆 · 飲品 {importPreview.beverageCount} 杯 · 有水分 {importPreview.waterDayCount} 天 · 有體重／步數 {importPreview.bodyMetricDayCount} 天</p><label><input type="checkbox" checked={preserveWater} onChange={event => setPreserveWater(event.target.checked)} /> 保留匯入檔中沒有水分數值日期的既有飲水紀錄</label><button className="save-btn" disabled={importing} onClick={() => void submitImport()}>{importing ? "匯入中…" : "確認替換歷史資料"}</button></section>}
+  </Sheet>;
+}
