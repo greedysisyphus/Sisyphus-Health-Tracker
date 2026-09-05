@@ -12,7 +12,7 @@ import {
   totalForEntryData,
 } from "../../../lib/agent-health";
 import { getAdminDb } from "../../../lib/firebase-admin";
-import { normalizeFoodCategory } from "../../../lib/nutrition";
+import { foodSearchTokens, normalizeFoodCategory } from "../../../lib/nutrition";
 import { dailySummaryFields } from "../../../lib/daily-summary";
 
 export const runtime = "nodejs";
@@ -292,17 +292,33 @@ export async function POST(request: Request) {
     if (input.action === "upsert_food") {
       const id = input.food.id ?? crypto.randomUUID();
       const nutrition = input.food.nutrition;
+      const normalizedCategory = normalizeFoodCategory(input.food.category, input.food.name);
       await db.doc(`users/${ownerId}/foods/${id}`).set({
-        id, name: input.food.name, brand: input.food.brand ?? null, category: normalizeFoodCategory(input.food.category, input.food.name), servingWeightG: input.food.servingWeightG ?? null, hydrationMlPerServing: input.food.hydrationMlPerServing,
+        id, name: input.food.name, brand: input.food.brand ?? null, category: normalizedCategory, searchTokens: foodSearchTokens(input.food.name, input.food.brand, normalizedCategory), servingWeightG: input.food.servingWeightG ?? null, hydrationMlPerServing: input.food.hydrationMlPerServing,
         nutrition: { caloriesKcal: nutrition.calories, proteinG: nutrition.protein, carbsG: nutrition.carbs, fatG: nutrition.fat, fiberG: nutrition.fiber, sugarG: nutrition.sugar, saturatedFatG: nutrition.saturatedFat, transFatG: nutrition.transFat, sodiumMg: nutrition.sodium, potassiumMg: nutrition.potassium, cholesterolMg: nutrition.cholesterol, caffeineMg: nutrition.caffeine },
         favorite: input.food.favorite, notes: input.food.notes ?? null, useCount: 0, createdAt: now, updatedAt: now,
       }, { merge: true });
       return Response.json({ ok: true, action: input.action, foodId: id });
     }
     if (input.action === "find_foods") {
-      const query = input.query.trim().toLowerCase();
-      const foods = await db.collection(`users/${ownerId}/foods`).get();
-      const matches = foods.docs.map(document => document.data()).filter(food => !query || `${food.name ?? ""} ${food.brand ?? ""} ${food.category ?? ""}`.toLowerCase().includes(query)).slice(0, input.limit);
+      const query = input.query.trim().normalize("NFKC").toLocaleLowerCase("zh-TW").replace(/[\s_\-／/·•]+/g, "");
+      const foodCollection = db.collection(`users/${ownerId}/foods`);
+      const foods = query
+        ? await Promise.all([
+          foodCollection.where("searchTokens", "array-contains", query).limit(input.limit).get(),
+          foodCollection.orderBy("name").limit(100).get(),
+        ])
+        : [await foodCollection.orderBy("name").limit(input.limit).get()];
+      const documents = new Map<string, FirebaseFirestore.QueryDocumentSnapshot>();
+      for (const document of foods[0].docs) documents.set(document.id, document);
+      if (query && foods[1]) {
+        for (const document of foods[1].docs) {
+          const food = document.data();
+          if (Array.isArray(food.searchTokens)) continue;
+          if (foodSearchTokens(food.name, food.brand, food.category).includes(query)) documents.set(document.id, document);
+        }
+      }
+      const matches = [...documents.values()].map(document => document.data()).sort((left, right) => Number(right.useCount ?? 0) - Number(left.useCount ?? 0) || String(left.name ?? "").localeCompare(String(right.name ?? ""), "zh-Hant")).slice(0, input.limit);
       return Response.json({ ok: true, action: input.action, foods: matches });
     }
     if (input.action === "log_water") {

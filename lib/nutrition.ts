@@ -115,6 +115,18 @@ const categoryAliases: Record<string, FoodCategory> = {
 
 const compactKey = (value: string) => value.trim().toLowerCase().replace(/[\s_\-／/·•]+/g, "");
 
+/** Firestore-friendly substring tokens for saved-food lookup. */
+export function foodSearchTokens(...values: Array<string | null | undefined>): string[] {
+  const tokens = new Set<string>();
+  for (const value of values) {
+    const text = typeof value === "string" ? value.normalize("NFKC").toLocaleLowerCase("zh-TW").replace(/[\s_\-／/·•]+/g, "") : "";
+    for (let start = 0; start < text.length; start += 1) {
+      for (let end = start + 1; end <= Math.min(text.length, start + 32); end += 1) tokens.add(text.slice(start, end));
+    }
+  }
+  return [...tokens];
+}
+
 /**
  * Collapse free-form tags (雞肉/雞胸肉/meat…) into one canonical category.
  * Unknown free-form labels become 其他 so the chip bar stays clean.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calculateDailyNutrition, calculateHydrationSummary, calculateNutritionByPortion, calculateRemainingCalories, calculateSevenDayAverage, categoryGroupOf, getWeekRange, isDrinkCategory, normalizeFoodCategory, normalizeFoodRecord } from "../lib/nutrition";
+import { calculateDailyNutrition, calculateHydrationSummary, calculateNutritionByPortion, calculateRemainingCalories, calculateSevenDayAverage, categoryGroupOf, foodSearchTokens, getWeekRange, isDrinkCategory, normalizeFoodCategory, normalizeFoodRecord } from "../lib/nutrition";
 
 describe("nutrition utilities", () => {
   it("scales all nutrients by servings", () => expect(calculateNutritionByPortion({ caloriesKcal: 200, proteinG: 20, carbsG: 10, fatG: 5, sugarG: 1, fiberG: 2, saturatedFatG: 1, transFatG: null, sodiumMg: 200, potassiumMg: null, cholesterolMg: null, caffeineMg: 0 }, 1.5)).toMatchObject({ caloriesKcal: 300, proteinG: 30, fatG: 7.5 }));
@@ -32,6 +32,12 @@ describe("nutrition utilities", () => {
     expect(categoryGroupOf("其他", 330)).toBe("drink");
     expect(isDrinkCategory("肉類")).toBe(false);
     expect(isDrinkCategory(null, 400)).toBe(true);
+  });
+  it("generates normalized substring tokens for saved-food lookup", () => {
+    const tokens = foodSearchTokens("光泉 無糖黑豆漿", "Family-Mart", "乳飲");
+    expect(tokens).toContain("黑豆");
+    expect(tokens).toContain("familymart");
+    expect(tokens).toContain("乳飲");
   });
   it("collapses free-form and AI tags into canonical categories", () => {
     expect(normalizeFoodCategory("雞胸肉")).toBe("雞胸類");
