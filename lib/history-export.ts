@@ -122,6 +122,25 @@ export function buildHistoryExportDay(day: HistoryExportDayInput): HistoryExport
   };
 }
 
+export function historyExportPreviewFromData(data: HistoryExport): HistoryExportPreview {
+  return {
+    startDate: data.date_range.start,
+    endDate: data.date_range.end,
+    dayCount: data.daily_records.length,
+    entryCount: data.daily_records.reduce((total, day) => total + day.meals.reduce((sum, meal) => sum + meal.items.length, 0), 0),
+    beverageCount: data.daily_records.reduce((total, day) => total + day.beverages.length, 0),
+    waterDayCount: data.daily_records.filter(day => day.water_ml !== null && day.water_ml !== undefined).length,
+    bodyMetricDayCount: data.daily_records.filter(day => (day.weight_kg !== null && day.weight_kg !== undefined) || (day.steps !== null && day.steps !== undefined)).length,
+  };
+}
+
+/** User-facing success copy after a destructive history replace lands. */
+export function formatHistoryImportNotice(preview: HistoryExportPreview, options: { refreshFailed?: boolean } = {}): string {
+  const base = `已匯入 ${preview.startDate} 至 ${preview.endDate}（${preview.dayCount} 天、餐點 ${preview.entryCount} 筆、飲品 ${preview.beverageCount} 杯）。`;
+  if (options.refreshFailed) return `${base} 但畫面重新整理失敗，請切換頁面或重新整理後再確認。`;
+  return base;
+}
+
 export function validateHistoryExport(value: unknown): HistoryExportValidation {
   const parsed = historyExportSchema.safeParse(value);
   if (!parsed.success) return { ok: false, error: "JSON 格式或版本不支援，請選擇 schema_version 3.0 的匯出檔。" };
@@ -130,14 +149,6 @@ export function validateHistoryExport(value: unknown): HistoryExportValidation {
   return {
     ok: true,
     data,
-    preview: {
-      startDate: data.date_range.start,
-      endDate: data.date_range.end,
-      dayCount: data.daily_records.length,
-      entryCount: data.daily_records.reduce((total, day) => total + day.meals.reduce((sum, meal) => sum + meal.items.length, 0), 0),
-      beverageCount: data.daily_records.reduce((total, day) => total + day.beverages.length, 0),
-      waterDayCount: data.daily_records.filter(day => day.water_ml !== null && day.water_ml !== undefined).length,
-      bodyMetricDayCount: data.daily_records.filter(day => (day.weight_kg !== null && day.weight_kg !== undefined) || (day.steps !== null && day.steps !== undefined)).length,
-    },
+    preview: historyExportPreviewFromData(data),
   };
 }
