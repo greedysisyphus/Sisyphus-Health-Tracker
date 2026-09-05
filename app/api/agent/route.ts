@@ -81,6 +81,7 @@ export const actionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("get_range_summary"), startDate: z.string().date(), endDate: z.string().date() }),
   z.object({ action: z.literal("import_history"), data: importPayload }),
   z.object({ action: z.literal("replace_history_export"), data: historyExport, preserveExistingWaterDates: z.array(z.string().date()).default([]) }),
+  z.object({ action: z.literal("backfill_daily_summaries"), dates: z.array(z.string().date()).min(1).max(1000) }),
   z.object({ action: z.literal("shift_imported_history"), dates: z.array(z.string().date()).min(1), waterDates: z.array(z.string().date()).default([]), bodyDates: z.array(z.string().date()).default([]), days: z.number().int().min(-365).max(365), preserveSourceDates: z.array(z.string().date()).default([]) }),
 ]);
 
@@ -447,6 +448,27 @@ export async function POST(request: Request) {
       if (input.data.profile) batch.set(db.doc(`users/${ownerId}`), { heightCm: input.data.profile.height_cm, targetWeightKg: input.data.profile.goal_weight_kg, dailyStepsAverage: input.data.profile.average_steps_per_day, startingWeightKg: input.data.profile.starting_weight_kg, targets: input.data.targets, updatedAt: now, createdAt: now }, { merge: true });
       await batch.commit();
       return Response.json({ ok: true, action: input.action, importedDays: records.length, importedEntries });
+    }
+    if (input.action === "backfill_daily_summaries") {
+      const snapshots = await Promise.all(input.dates.map(async date => {
+        const [entries, daily] = await Promise.all([
+          dayRef(db, ownerId, date).collection("entries").get(),
+          dayRef(db, ownerId, date).get(),
+        ]);
+        return { date, entryCount: entries.size, total: totalForEntries(entries.docs), daily: daily.data() ?? {} };
+      }));
+      const batch = createChunkedBatch(db);
+      for (const snapshot of snapshots) {
+        batch.set(dayRef(db, ownerId, snapshot.date), {
+          ...snapshot.daily,
+          date: snapshot.date,
+          ...dailySummaryFields(snapshot.total),
+          entryCount: snapshot.entryCount,
+          updatedAt: now,
+        }, { merge: true });
+      }
+      await batch.commit();
+      return Response.json({ ok: true, action: input.action, updatedDays: snapshots.length, updatedEntries: snapshots.reduce((total, snapshot) => total + snapshot.entryCount, 0) });
     }
     if (input.action === "shift_imported_history") {
       const batch = db.batch();

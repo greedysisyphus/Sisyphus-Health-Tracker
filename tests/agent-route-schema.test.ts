@@ -27,4 +27,9 @@ describe("agent route composite schema", () => {
     }));
     expect(actionSchema.safeParse({ ...base, entries }).success).toBe(false);
   });
+
+  it("accepts bounded daily summary backfills", () => {
+    expect(actionSchema.safeParse({ action: "backfill_daily_summaries", dates: ["2026-07-15"] }).success).toBe(true);
+    expect(actionSchema.safeParse({ action: "backfill_daily_summaries", dates: Array.from({ length: 1001 }, () => "2026-07-15") }).success).toBe(false);
+  });
 });
