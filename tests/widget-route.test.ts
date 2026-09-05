@@ -127,4 +127,18 @@ describe("widget today route", () => {
     await expect(response.json()).resolves.toMatchObject({ steps: 8123, weightKg: 72.4 });
     expect(doc).toHaveBeenCalledWith(expect.stringMatching(/^users\/owner-id\/bodyLogs\/\d{4}-\d{2}-\d{2}$/));
   });
+
+  it("falls back independently when bodyLogs only contains one metric", async () => {
+    configureServer();
+    const dailyRef = {
+      collection: vi.fn(() => ({ get: vi.fn().mockResolvedValue({ docs: [] }) })),
+      get: vi.fn().mockResolvedValue({ data: () => ({ waterMl: 900, steps: 4567, weightKg: 73.1 }) }),
+    };
+    const bodyRef = { get: vi.fn().mockResolvedValue({ data: () => ({ steps: 8123 }) }) };
+    getAdminDb.mockReturnValue({ doc: vi.fn((path: string) => path.includes("/bodyLogs/") ? bodyRef : dailyRef) });
+
+    const response = await GET(request("widget-secret"));
+
+    await expect(response.json()).resolves.toMatchObject({ steps: 8123, weightKg: 73.1 });
+  });
 });
