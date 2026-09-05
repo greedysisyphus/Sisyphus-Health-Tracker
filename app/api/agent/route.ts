@@ -13,6 +13,7 @@ import {
 } from "../../../lib/agent-health";
 import { getAdminDb } from "../../../lib/firebase-admin";
 import { normalizeFoodCategory } from "../../../lib/nutrition";
+import { dailySummaryFields } from "../../../lib/daily-summary";
 
 export const runtime = "nodejs";
 
@@ -109,6 +110,12 @@ const dailySummaryForDate = async (db: FirebaseFirestore.Firestore, ownerId: str
   ]);
   return { ...totalForEntries(entries.docs), waterMl: Number(daily.data()?.waterMl ?? 0) };
 };
+const refreshDailySummary = async (db: FirebaseFirestore.Firestore, ownerId: string, date: string) => {
+  const summary = await dailySummaryForDate(db, ownerId, date);
+  const entries = await dayRef(db, ownerId, date).collection("entries").get();
+  await dayRef(db, ownerId, date).set({ date, ...dailySummaryFields(summary), entryCount: entries.size, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+  return summary;
+};
 
 export async function POST(request: Request) {
   const raw = await request.text();
@@ -157,6 +164,8 @@ export async function POST(request: Request) {
           const dailyUpdate: Record<string, unknown> = {
             date: input.date,
             waterMl: plan.waterMl,
+            ...dailySummaryFields(plan.dailySummary),
+            entryCount: existingEntries.size + plan.entries.length,
             updatedAt: now,
             createdAt: now,
           };
@@ -210,7 +219,7 @@ export async function POST(request: Request) {
         return entry;
       });
       await batch.commit();
-      return Response.json({ ok: true, action: input.action, entries, dailySummary: await dailySummaryForDate(db, ownerId, input.date) });
+      return Response.json({ ok: true, action: input.action, entries, dailySummary: await refreshDailySummary(db, ownerId, input.date) });
     }
     if (input.action === "amend_food") {
       try {
@@ -234,7 +243,7 @@ export async function POST(request: Request) {
         }
         transaction.set(reference, { ...changes, ...nutritionChanges, updatedAt: now }, { merge: true });
       });
-      return Response.json({ ok: true, action: input.action, entryId: input.entryId, dailySummary: await dailySummaryForDate(db, ownerId, input.date) });
+      return Response.json({ ok: true, action: input.action, entryId: input.entryId, dailySummary: await refreshDailySummary(db, ownerId, input.date) });
     }
     if (input.action === "delete_food") {
       await db.runTransaction(async transaction => {
@@ -249,7 +258,7 @@ export async function POST(request: Request) {
         transaction.delete(reference);
         if (hydrationMl) transaction.set(dayRef(db, ownerId, input.date), { date: input.date, waterMl: nextWaterMl(Number(daily.data()?.waterMl ?? 0), hydrationMl, 0, totalHydrationForEntries(allEntries.docs)), updatedAt: now, createdAt: now }, { merge: true });
       });
-      return Response.json({ ok: true, action: input.action, entryId: input.entryId, dailySummary: await dailySummaryForDate(db, ownerId, input.date) });
+      return Response.json({ ok: true, action: input.action, entryId: input.entryId, dailySummary: await refreshDailySummary(db, ownerId, input.date) });
     }
     if (input.action === "upsert_food") {
       const id = input.food.id ?? crypto.randomUUID();

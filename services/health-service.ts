@@ -1,12 +1,13 @@
 import { collection, deleteDoc, doc, getDoc, getDocs, increment, limit, orderBy, query, runTransaction, serverTimestamp, setDoc } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { calculateDailyNutrition, emptyNutrition, normalizeFoodRecord, type FoodEntry, type Nutrition } from "../lib/nutrition";
+import { dailySummaryFields, nutritionFromDailyData } from "../lib/daily-summary";
 import type { BodyLog, DailyLog } from "../types/models";
 
 const dailyPath = (userId: string, date: string) => `users/${userId}/dailyLogs/${date}`;
 const hydration = (value: unknown) => typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
 
-export type DailyOverview = { date: string; waterMl: number; entries: FoodEntry[]; total: Nutrition; weightKg?: number; steps?: number };
+export type DailyOverview = { date: string; waterMl: number; entries: FoodEntry[]; entryCount: number; total: Nutrition; weightKg?: number; steps?: number };
 export type BodyLogSummary = { date: string; weightKg?: number; steps?: number; sleepHours?: number };
 
 export async function listDailyEntries(userId: string, date: string): Promise<FoodEntry[]> {
@@ -27,6 +28,15 @@ export async function saveEntry(userId: string, date: string, entry: FoodEntry):
     transaction.set(entryDocument, { ...entry, updatedAt: serverTimestamp(), createdAt: serverTimestamp() }, { merge: true });
     if (!previous.exists() && savedFood?.exists() && savedFoodDocument) transaction.update(savedFoodDocument, { useCount: increment(1), updatedAt: serverTimestamp() });
   });
+  await refreshDailySummary(userId, date);
+}
+
+async function refreshDailySummary(userId: string, date: string): Promise<void> {
+  const firebaseDb = db;
+  if (!firebaseDb) throw new Error("Firebase 尚未設定");
+  const entries = await listDailyEntries(userId, date);
+  const total = calculateDailyNutrition(entries);
+  await setDoc(doc(firebaseDb, dailyPath(userId, date)), { date, ...dailySummaryFields(total), entryCount: entries.length, updatedAt: serverTimestamp() }, { merge: true });
 }
 
 export async function removeEntry(userId: string, date: string, entryId: string): Promise<void> {
@@ -38,6 +48,7 @@ export async function removeEntry(userId: string, date: string, entryId: string)
     transaction.set(dayRef, { date, waterMl: Math.max(0, hydration(daily.data()?.waterMl) - hydration(entry.data()?.hydrationMl)), updatedAt: serverTimestamp(), createdAt: serverTimestamp() }, { merge: true });
     transaction.delete(entryDocument);
   });
+  await refreshDailySummary(userId, date);
 }
 
 export async function getDailyLog(userId: string, date: string): Promise<DailyLog | null> {
@@ -92,7 +103,7 @@ export async function listBodyLogs(userId: string, count = 120): Promise<BodyLog
  * Merge dailyLogs with bodyLogs so sparse weight entries still appear in trends
  * even when that calendar day has no food or water log.
  */
-export async function listDailyOverviews(userId: string, count = 30): Promise<DailyOverview[]> {
+export async function listDailyOverviews(userId: string, count = 30, options: { includeEntries?: boolean } = {}): Promise<DailyOverview[]> {
   if (!db) return [];
   const bodyLimit = Math.max(count, 120);
   const [daily, bodies] = await Promise.all([
@@ -103,14 +114,17 @@ export async function listDailyOverviews(userId: string, count = 30): Promise<Da
   const overviewByDate = new Map<string, DailyOverview>();
 
   await Promise.all(daily.docs.map(async item => {
-    const data = item.data() as DailyLog;
-    const entries = await listDailyEntries(userId, data.date);
+    const raw = item.data();
+    const data = raw as DailyLog;
+    const storedTotal = nutritionFromDailyData(raw);
+    const entries = options.includeEntries || !storedTotal ? await listDailyEntries(userId, data.date) : [];
     const body = bodyByDate.get(data.date);
     overviewByDate.set(data.date, {
       date: data.date,
       waterMl: data.waterMl ?? 0,
       entries,
-      total: calculateDailyNutrition(entries),
+      entryCount: typeof raw.entryCount === "number" ? raw.entryCount : entries.length,
+      total: storedTotal ?? calculateDailyNutrition(entries),
       weightKg: body?.weightKg ?? data.weightKg,
       steps: body?.steps ?? data.steps,
     });
@@ -123,6 +137,7 @@ export async function listDailyOverviews(userId: string, count = 30): Promise<Da
       date: body.date,
       waterMl: 0,
       entries: [],
+      entryCount: 0,
       total: emptyNutrition(),
       weightKg: body.weightKg,
       steps: body.steps,

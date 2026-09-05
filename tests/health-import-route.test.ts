@@ -34,23 +34,45 @@ function configureServer() {
 function useInMemoryStores(initialDaily: Record<string, unknown> = {}, initialBody: Record<string, unknown> = {}) {
   let dailyStored = { ...initialDaily };
   let bodyStored = { ...initialBody };
+  const importsStored = new Map<string, Record<string, unknown>>();
   const dailySet = vi.fn(async (value: Record<string, unknown>, options?: { merge?: boolean }) => {
     dailyStored = options?.merge ? { ...dailyStored, ...value } : { ...value };
   });
   const bodySet = vi.fn(async (value: Record<string, unknown>, options?: { merge?: boolean }) => {
     bodyStored = options?.merge ? { ...bodyStored, ...value } : { ...value };
   });
-  const doc = vi.fn((path: string) => {
-    if (path.includes("/bodyLogs/")) return { set: bodySet };
-    return { set: dailySet };
-  });
-  getAdminDb.mockReturnValue({ doc });
+  const doc = vi.fn((path: string) => ({
+    path,
+    get: vi.fn().mockResolvedValue({ data: () => path.includes("/healthImports/") ? importsStored.get(path.split("/").pop() ?? "") : path.includes("/bodyLogs/") ? bodyStored : dailyStored }),
+  }));
+  const transaction = {
+    get: vi.fn(async (reference: { path: string }) => ({ data: () => reference.path.includes("/healthImports/") ? importsStored.get(reference.path.split("/").pop() ?? "") : reference.path.includes("/bodyLogs/") ? bodyStored : dailyStored })),
+    set: vi.fn((reference: { path: string }, value: Record<string, unknown>, options?: { merge?: boolean }) => {
+      if (reference.path.includes("/healthImports/")) importsStored.set(reference.path.split("/").pop() ?? "", value);
+      else if (reference.path.includes("/bodyLogs/")) void bodySet(value, options);
+      else void dailySet(value, options);
+      return transaction;
+    }),
+    commit: vi.fn().mockResolvedValue(undefined),
+  };
+  const batch = {
+    set: vi.fn((reference: { path: string }, value: Record<string, unknown>, options?: { merge?: boolean }) => {
+      if (reference.path.includes("/bodyLogs/")) void bodySet(value, options);
+      else void dailySet(value, options);
+      return batch;
+    }),
+    commit: vi.fn().mockResolvedValue(undefined),
+  };
+  const runTransaction = vi.fn(async (callback: (tx: typeof transaction) => Promise<unknown>) => { const result = await callback(transaction); await transaction.commit(); return result; });
+  getAdminDb.mockReturnValue({ doc, batch: vi.fn(() => batch), runTransaction });
   return {
     doc,
     dailySet,
     bodySet,
     dailyStored: () => dailyStored,
     bodyStored: () => bodyStored,
+    batch,
+    transaction,
   };
 }
 
@@ -67,7 +89,7 @@ describe("Apple Health import route", () => {
     const response = await POST(request(validPayload));
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({ ok: true, date: "2026-08-29", steps: 5234 });
+    await expect(response.json()).resolves.toEqual({ ok: true, date: "2026-08-29", steps: 5234, accepted: true });
     expect(database.doc).toHaveBeenCalledWith("users/owner-id/dailyLogs/2026-08-29");
     expect(database.doc).toHaveBeenCalledWith("users/owner-id/bodyLogs/2026-08-29");
     expect(database.dailySet).toHaveBeenCalledWith(expect.objectContaining({
@@ -99,7 +121,7 @@ describe("Apple Health import route", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
       ok: true,
-      records: records.map(({ date, steps }) => ({ date, steps })),
+      records: records.map(({ date, steps }) => ({ date, steps, accepted: true })),
     });
     expect(database.dailySet).toHaveBeenCalledTimes(3);
     expect(database.bodySet).toHaveBeenCalledTimes(3);
@@ -158,6 +180,46 @@ describe("Apple Health import route", () => {
     expect(database.dailySet).toHaveBeenCalledTimes(3);
     expect(database.bodySet).toHaveBeenCalledTimes(3);
     expect(database.dailySet.mock.calls.every(([, options]) => options?.merge === true)).toBe(true);
+  });
+
+  it("accepts a sync id and commits daily and body writes atomically", async () => {
+    const database = useInMemoryStores();
+
+    const record = { date: validPayload.date, steps: validPayload.steps, syncedAt: validPayload.syncedAt };
+    const response = await POST(request({ source: "apple_health", syncId: "sync-2026-08-29", records: [record] }));
+
+    expect(response.status).toBe(200);
+    expect(database.transaction.commit).toHaveBeenCalledOnce();
+    expect(database.transaction.set.mock.calls.map(([reference]) => reference.path)).toEqual([
+      "users/owner-id/dailyLogs/2026-08-29",
+      "users/owner-id/bodyLogs/2026-08-29",
+      "users/owner-id/healthImports/sync-2026-08-29",
+    ]);
+    expect(database.transaction.set.mock.calls.slice(0, 2).every(([, value]) => value.syncId === "sync-2026-08-29")).toBe(true);
+  });
+
+  it("replays the same sync id and rejects a changed payload", async () => {
+    const database = useInMemoryStores();
+    const first = await POST(request({ source: "apple_health", syncId: "sync-replay", records: [{ date: "2026-08-29", steps: 5234, syncedAt: "2026-08-29T15:35:00+08:00" }] }));
+    const replay = await POST(request({ source: "apple_health", syncId: "sync-replay", records: [{ date: "2026-08-29", steps: 5234, syncedAt: "2026-08-29T15:35:00+08:00" }] }));
+    const conflict = await POST(request({ source: "apple_health", syncId: "sync-replay", records: [{ date: "2026-08-29", steps: 9999, syncedAt: "2026-08-29T15:35:00+08:00" }] }));
+
+    expect(first.status).toBe(200);
+    expect(replay.status).toBe(200);
+    expect(await replay.json()).toMatchObject({ replayed: true });
+    expect(conflict.status).toBe(409);
+    expect(await conflict.json()).toEqual({ error: "sync_id_conflict" });
+    expect(database.transaction.commit).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not overwrite a newer sync", async () => {
+    const database = useInMemoryStores();
+    await POST(request({ ...validPayload, syncId: "sync-new", steps: 9000, syncedAt: "2026-08-29T23:00:00+08:00" }));
+    const stale = await POST(request({ ...validPayload, syncId: "sync-old", steps: 1000, syncedAt: "2026-08-29T22:00:00+08:00" }));
+
+    expect(stale.status).toBe(200);
+    expect(await stale.json()).toMatchObject({ accepted: false, reason: "stale_sync" });
+    expect(database.dailyStored().steps).toBe(9000);
   });
 
   it("preserves unrelated fields on the daily health record", async () => {

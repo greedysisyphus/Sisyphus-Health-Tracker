@@ -111,4 +111,20 @@ describe("widget today route", () => {
       weightKg: null,
     });
   });
+
+  it("falls back to bodyLogs when body metrics are not on dailyLogs", async () => {
+    configureServer();
+    const dailyRef = {
+      collection: vi.fn(() => ({ get: vi.fn().mockResolvedValue({ docs: [] }) })),
+      get: vi.fn().mockResolvedValue({ data: () => ({ waterMl: 900 }) }),
+    };
+    const bodyRef = { get: vi.fn().mockResolvedValue({ data: () => ({ steps: 8123, weightKg: 72.4 }) }) };
+    const doc = vi.fn((path: string) => path.includes("/bodyLogs/") ? bodyRef : dailyRef);
+    getAdminDb.mockReturnValue({ doc });
+
+    const response = await GET(request("widget-secret"));
+
+    await expect(response.json()).resolves.toMatchObject({ steps: 8123, weightKg: 72.4 });
+    expect(doc).toHaveBeenCalledWith(expect.stringMatching(/^users\/owner-id\/bodyLogs\/\d{4}-\d{2}-\d{2}$/));
+  });
 });

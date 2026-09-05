@@ -1,5 +1,5 @@
 import { timingSafeEqual } from "crypto";
-import { totalForEntryData } from "../../../../lib/agent-health";
+import { resolveDayBodyMetrics, totalForEntryData } from "../../../../lib/agent-health";
 import { getAdminDb } from "../../../../lib/firebase-admin";
 
 export const runtime = "nodejs";
@@ -47,14 +47,18 @@ export async function GET(request: Request) {
     const date = taipeiDate();
     const db = getAdminDb();
     const dayRef = db.doc(`users/${ownerId}/dailyLogs/${date}`);
+    const bodyRef = db.doc(`users/${ownerId}/bodyLogs/${date}`);
 
-    const [entriesSnapshot, dailySnapshot] = await Promise.all([
+    const [entriesSnapshot, dailySnapshot, bodySnapshot] = await Promise.all([
       dayRef.collection("entries").get(),
       dayRef.get(),
+      bodyRef.get(),
     ]);
 
     const total = totalForEntryData(entriesSnapshot.docs.map(document => document.data()));
     const daily = dailySnapshot.data();
+    const body = bodySnapshot.data();
+    const metrics = resolveDayBodyMetrics(daily, body);
 
     return json({
       date,
@@ -64,8 +68,8 @@ export async function GET(request: Request) {
       sodiumMg: total.sodiumMg,
       caffeineMg: total.caffeineMg,
       waterMl: Number(daily?.waterMl ?? 0),
-      steps: typeof daily?.steps === "number" ? daily.steps : null,
-      weightKg: typeof daily?.weightKg === "number" ? daily.weightKg : null,
+      steps: metrics.steps,
+      weightKg: metrics.weightKg,
     });
   } catch (error) {
     console.error("Widget health API failed", error);

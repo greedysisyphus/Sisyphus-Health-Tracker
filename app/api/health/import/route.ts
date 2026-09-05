@@ -1,4 +1,4 @@
-import { timingSafeEqual } from "crypto";
+import { createHash, timingSafeEqual } from "crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { z } from "zod";
 import { getAdminDb } from "../../../../lib/firebase-admin";
@@ -15,9 +15,10 @@ const healthImportRecordSchema = z.object({
 }).strict();
 
 export const healthImportSchema = z.union([
-  healthImportRecordSchema.extend({ source: z.literal("apple_health") }).strict(),
+  healthImportRecordSchema.extend({ source: z.literal("apple_health"), syncId: z.string().min(1).max(200).optional() }).strict(),
   z.object({
     source: z.literal("apple_health"),
+    syncId: z.string().min(1).max(200).optional(),
     records: z.array(healthImportRecordSchema).min(1).max(7),
   }).strict().superRefine((value, context) => {
     const dates = new Set(value.records.map(record => record.date));
@@ -66,38 +67,45 @@ export async function POST(request: Request) {
 
   const input = parsed.data;
   const records = "records" in input ? input.records : [input];
+  const syncId = "syncId" in input ? input.syncId : undefined;
   try {
     const db = getAdminDb();
     const now = FieldValue.serverTimestamp();
-    await Promise.all(records.flatMap(record => {
-      const syncedAt = new Date(record.syncedAt);
-      const dailyPayload = {
-        date: record.date,
-        steps: record.steps,
-        source: input.source,
-        syncedAt,
-        updatedAt: now,
-      };
-      const bodyPayload = {
-        date: record.date,
-        steps: record.steps,
-        updatedAt: now,
-        createdAt: now,
-      };
-      return [
-        db.doc(`users/${ownerId}/dailyLogs/${record.date}`).set(dailyPayload, { merge: true }),
-        db.doc(`users/${ownerId}/bodyLogs/${record.date}`).set(bodyPayload, { merge: true }),
-      ];
-    }));
+    const payloadHash = createHash("sha256").update(JSON.stringify(body)).digest("hex");
+    const response = await db.runTransaction(async transaction => {
+      const dailyRefs = records.map(record => db.doc(`users/${ownerId}/dailyLogs/${record.date}`));
+      const importRef = syncId ? db.doc(`users/${ownerId}/healthImports/${syncId}`) : null;
+      const snapshots = await Promise.all(dailyRefs.map(ref => transaction.get(ref)));
+      const importSnapshot = importRef ? await transaction.get(importRef) : null;
+      const existingImport = importSnapshot?.data();
+      if (existingImport) {
+        if (existingImport.payloadHash !== payloadHash) throw new Error("sync_id_conflict");
+        return { ...(existingImport.response as Record<string, unknown>), replayed: true };
+      }
 
-    if (records.length === 1 && !("records" in input)) {
-      return json({ ok: true, date: records[0].date, steps: records[0].steps });
-    }
-    return json({
-      ok: true,
-      records: records.map(record => ({ date: record.date, steps: record.steps })),
+      const accepted = records.filter((record, index) => {
+        const currentSyncedAt = snapshots[index].data()?.syncedAt;
+        const incomingSyncedAt = new Date(record.syncedAt);
+        const currentDate = currentSyncedAt instanceof Date ? currentSyncedAt : currentSyncedAt?.toDate?.();
+        return !(currentDate instanceof Date && currentDate.getTime() > incomingSyncedAt.getTime());
+      });
+      const acceptedDates = new Set(accepted.map(record => record.date));
+      for (const record of accepted) {
+        const syncedAt = new Date(record.syncedAt);
+        const metadata = { source: input.source, syncedAt, ...(syncId ? { syncId } : {}) };
+        transaction.set(db.doc(`users/${ownerId}/dailyLogs/${record.date}`), { date: record.date, steps: record.steps, ...metadata, updatedAt: now }, { merge: true });
+        transaction.set(db.doc(`users/${ownerId}/bodyLogs/${record.date}`), { date: record.date, steps: record.steps, ...metadata, updatedAt: now, createdAt: now }, { merge: true });
+      }
+
+      const result = records.length === 1 && !("records" in input)
+        ? { ok: true, date: records[0].date, steps: records[0].steps, accepted: acceptedDates.has(records[0].date), ...(acceptedDates.has(records[0].date) ? {} : { reason: "stale_sync" }) }
+        : { ok: true, records: records.map(record => ({ date: record.date, steps: record.steps, accepted: acceptedDates.has(record.date), ...(acceptedDates.has(record.date) ? {} : { reason: "stale_sync" }) })) };
+      if (importRef) transaction.set(importRef, { syncId, payloadHash, response: result, createdAt: now, updatedAt: now }, { merge: true });
+      return result;
     });
+    return json(response);
   } catch (error) {
+    if (error instanceof Error && error.message === "sync_id_conflict") return json({ error: "sync_id_conflict" }, 409);
     console.error("Apple Health import failed", error);
     return json({ error: "operation_failed" }, 500);
   }
