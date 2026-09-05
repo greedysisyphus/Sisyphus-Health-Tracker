@@ -35,6 +35,8 @@ export default function Home() {
   const [view, setView] = useState<View>("daily");
   const [history, setHistory] = useState<DailyOverview[]>([]);
   const [savedFoods, setSavedFoods] = useState<SavedFoodSummary[]>([]);
+  const [savedFoodsLoading, setSavedFoodsLoading] = useState(Boolean(auth));
+  const [savedFoodsError, setSavedFoodsError] = useState("");
   const [entryEditor, setEntryEditor] = useState<EditorState>(undefined);
   const [foodEditor, setFoodEditor] = useState<SavedFoodInput | null | undefined>(undefined);
   const [exporting, setExporting] = useState(false);
@@ -43,6 +45,7 @@ export default function Home() {
   const [targetState, setTargets] = useState<HealthTargets>(defaultTargets);
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const dailyLoadId = useRef(0);
+  const libraryLoadId = useRef(0);
   const totals = useMemo(() => calculateDailyNutrition(entries), [entries]);
 
   useEffect(() => {
@@ -67,7 +70,22 @@ export default function Home() {
     } finally { if (dailyLoadId.current === loadId) setLoading(false); }
   }, [date, user]);
 
-  const loadLibrary = useCallback(async () => { if (user) setSavedFoods(await listFoods(user.uid)); }, [user]);
+  const loadLibrary = useCallback(async () => {
+    if (!user) return;
+    const loadId = libraryLoadId.current + 1;
+    libraryLoadId.current = loadId;
+    setSavedFoodsLoading(true);
+    setSavedFoodsError("");
+    try {
+      const nextFoods = await listFoods(user.uid);
+      if (libraryLoadId.current === loadId) setSavedFoods(nextFoods);
+    } catch {
+      if (libraryLoadId.current === loadId) setSavedFoodsError("讀取常用食物失敗，請再試一次。");
+      throw new Error("saved_foods_load_failed");
+    } finally {
+      if (libraryLoadId.current === loadId) setSavedFoodsLoading(false);
+    }
+  }, [user]);
   useEffect(() => { const timer = window.setTimeout(() => { void loadDaily(); }, 0); return () => window.clearTimeout(timer); }, [loadDaily]);
   useEffect(() => {
     if (!user || view !== "daily") return;
@@ -76,7 +94,7 @@ export default function Home() {
     document.addEventListener("visibilitychange", refreshWhenVisible);
     return () => { window.removeEventListener("focus", refreshWhenVisible); document.removeEventListener("visibilitychange", refreshWhenVisible); };
   }, [loadDaily, user, view]);
-  useEffect(() => { const timer = window.setTimeout(() => { void loadLibrary().catch(() => setNotice("讀取常用食物失敗。")); }, 0); return () => window.clearTimeout(timer); }, [loadLibrary]);
+  useEffect(() => { const timer = window.setTimeout(() => { void loadLibrary().catch(() => undefined); }, 0); return () => window.clearTimeout(timer); }, [loadLibrary]);
   useEffect(() => { if (!user) return; void getUserProfile(user.uid).then(profile => { if (!profile) return; setTargets(current => ({ ...current, caloriesKcal: { min: profileNumber(profile, "calorieTargetMin", current.caloriesKcal.min), max: profileNumber(profile, "calorieTargetMax", current.caloriesKcal.max) }, proteinG: { min: profileNumber(profile, "proteinTargetMin", current.proteinG.min), max: profileNumber(profile, "proteinTargetMax", current.proteinG.max) }, carbsG: { min: profileNumber(profile, "carbTargetMin", current.carbsG.min), max: profileNumber(profile, "carbTargetMax", current.carbsG.max) }, fatG: { min: profileNumber(profile, "fatTargetMin", current.fatG.min), max: profileNumber(profile, "fatTargetMax", current.fatG.max) }, waterMl: { min: profileNumber(profile, "waterTargetMinMl", current.waterMl.min), max: profileNumber(profile, "waterTargetMaxMl", current.waterMl.max) }, fiberG: profileNumber(profile, "fiberTarget", current.fiberG), sodiumMg: profileNumber(profile, "sodiumLimit", current.sodiumMg) })); }).catch(() => setNotice("讀取個人目標失敗。")); }, [user]);
   useEffect(() => { if (view === "daily") return; const timer = window.setTimeout(() => { void listDailyOverviews(user?.uid ?? "", 120, { includeEntries: false }).then(setHistory).catch(() => setNotice("讀取彙整資料失敗。")); }, 0); return () => window.clearTimeout(timer); }, [user?.uid, view]);
 
@@ -116,12 +134,29 @@ export default function Home() {
   };
   const updateWeight = async (value: string) => { const parsed = parseNonNegativeNumber(value); if (!user || parsed === null || parsed <= 0) return; try { await saveBodyLog(user.uid, { date, weightKg: parsed }); setWeightKg(parsed); setNotice(`已儲存體重 ${parsed.toFixed(1)} kg。`); } catch { setNotice("儲存體重失敗，請再試一次。"); } };
   const updateSteps = async (value: string) => { const parsed = parseNonNegativeNumber(value); if (!user || parsed === null || parsed < 0 || !Number.isInteger(parsed)) return; try { await saveBodyLog(user.uid, { date, steps: parsed }); setSteps(parsed); setNotice(`已儲存今日步數 ${parsed.toLocaleString("zh-TW")} 步。`); } catch { setNotice("儲存步數失敗，請再試一次。"); } };
-  const saveFood = async (food: SavedFoodInput) => { if (!user) return; try { const result = await saveSavedFood(user.uid, food); await loadLibrary(); setFoodEditor(undefined); setNotice(result.mergedDuplicate ? `「${food.name}」已有相同品牌的常用食物，已更新既有資料。` : `已儲存「${food.name}」。`); } catch { setNotice("儲存常用食物失敗，請再試一次。"); } };
-  const applySuggestedHydration = async (food: SavedFoodSummary, hydrationMlPerServing: number) => {
-    await saveFood({ ...food, hydrationMlPerServing });
-    setNotice(`已為「${food.name}」設定每份水分 ${hydrationMlPerServing} ml。`);
+  const saveFood = async (food: SavedFoodInput): Promise<boolean> => {
+    if (!user) return false;
+    try {
+      const result = await saveSavedFood(user.uid, food);
+      const successNotice = result.mergedDuplicate ? `「${food.name}」已有相同品牌的常用食物，已更新既有資料。` : `已儲存「${food.name}」。`;
+      setFoodEditor(undefined);
+      setNotice(successNotice);
+      try { await loadLibrary(); } catch { setNotice(`${successNotice} 但清單重新整理失敗，請按「重新整理」。`); }
+      return true;
+    } catch { setNotice("儲存常用食物失敗，請再試一次。"); return false; }
   };
-  const deleteFood = async (id: string) => { if (user && confirm("確定刪除這項常用食物？")) { await removeSavedFood(user.uid, id); await loadLibrary(); } };
+  const applySuggestedHydration = async (food: SavedFoodSummary, hydrationMlPerServing: number) => {
+    if (await saveFood({ ...food, hydrationMlPerServing })) setNotice(`已為「${food.name}」設定每份水分 ${hydrationMlPerServing} ml。`);
+  };
+  const deleteFood = async (id: string) => {
+    if (user && confirm("確定刪除這項常用食物？")) {
+      try {
+        await removeSavedFood(user.uid, id);
+        setNotice("已刪除常用食物。");
+        try { await loadLibrary(); } catch { setNotice("已刪除常用食物，但清單重新整理失敗，請按「重新整理」。"); }
+      } catch { setNotice("刪除常用食物失敗，請再試一次。"); }
+    }
+  };
   const mergeDuplicateFoods = async (foodIds: string[]) => {
     if (!user) return;
     try {
@@ -182,7 +217,7 @@ export default function Home() {
       {view === "daily" && <DailyView date={date} setDate={setDate} totals={totals} entries={entries} waterMl={waterMl} weightKg={weightKg} steps={steps} loading={loading} lastSyncedAt={lastSyncedAt} notice={notice} savedFoods={savedFoods} setEntryEditor={setEntryEditor} deleteEntry={deleteEntry} saveAsCommon={saveAsCommon} addWater={addWater} quickAddDrink={quickAddDrink} updateWeight={updateWeight} updateSteps={updateSteps} refresh={refreshDaily} exportData={openExport} />}
       {view === "overview" && <Overview history={history.filter(day => day.entryCount > 0 || day.waterMl > 0 || day.total.caloriesKcal > 0)} openDate={next => { setDate(next); setView("daily"); }} exportData={openExport} />}
       {view === "trends" && <Trends history={history} />}
-      {view === "foods" && <FoodLibrary date={date} foods={savedFoods} add={() => setFoodEditor(null)} quickAdd={addSavedFoodToDay} edit={setFoodEditor} remove={deleteFood} mergeDuplicates={mergeDuplicateFoods} applySuggestedHydration={applySuggestedHydration} />}
+      {view === "foods" && <FoodLibrary date={date} foods={savedFoods} loading={savedFoodsLoading} error={savedFoodsError} retry={() => void loadLibrary().catch(() => undefined)} add={() => setFoodEditor(null)} quickAdd={addSavedFoodToDay} edit={setFoodEditor} remove={deleteFood} mergeDuplicates={mergeDuplicateFoods} applySuggestedHydration={applySuggestedHydration} />}
       {view === "settings" && <TargetsSettings initial={targetState} save={async next => { if (!user) return; await saveHealthTargets(user.uid, { calorieTargetMin: next.caloriesKcal.min, calorieTargetMax: next.caloriesKcal.max, proteinTargetMin: next.proteinG.min, proteinTargetMax: next.proteinG.max, carbTargetMin: next.carbsG.min, carbTargetMax: next.carbsG.max, fatTargetMin: next.fatG.min, fatTargetMax: next.fatG.max, waterTargetMinMl: next.waterMl.min, waterTargetMaxMl: next.waterMl.max, fiberTarget: next.fiberG, sodiumLimit: next.sodiumMg }); setTargets(next); setNotice("已更新每日目標。"); }} />}
     </section>
     {entryEditor !== undefined && <EntryEditor initial={entryEditor} savedFoods={savedFoods} close={() => setEntryEditor(undefined)} save={saveDailyEntry} />}
@@ -408,7 +443,7 @@ const duplicateFoodGroups = (foods: SavedFoodSummary[]): DuplicateFoodGroup[] =>
     return [...exactBrandGroups.entries()].filter(([, items]) => items.length > 1).map(([brand, foods]) => ({ key: `${name}\u0000${brand}`, foods }));
   });
 };
-function FoodLibrary({ date, foods, add, quickAdd, edit, remove, mergeDuplicates, applySuggestedHydration }: { date: string; foods: SavedFoodSummary[]; add: () => void; quickAdd: (food: SavedFoodSummary, mealType: MealType) => Promise<boolean>; edit: (food: SavedFoodInput) => void; remove: (id: string) => Promise<void>; mergeDuplicates: (foodIds: string[]) => Promise<void>; applySuggestedHydration: (food: SavedFoodSummary, hydrationMl: number) => Promise<void> }) {
+function FoodLibrary({ date, foods, loading, error, retry, add, quickAdd, edit, remove, mergeDuplicates, applySuggestedHydration }: { date: string; foods: SavedFoodSummary[]; loading: boolean; error: string; retry: () => void; add: () => void; quickAdd: (food: SavedFoodSummary, mealType: MealType) => Promise<boolean>; edit: (food: SavedFoodInput) => void; remove: (id: string) => Promise<void>; mergeDuplicates: (foodIds: string[]) => Promise<void>; applySuggestedHydration: (food: SavedFoodSummary, hydrationMl: number) => Promise<void> }) {
   const [query, setQuery] = useState("");
   const [groupFilter, setGroupFilter] = useState<FoodCategoryGroupId>("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
@@ -483,6 +518,7 @@ function FoodLibrary({ date, foods, add, quickAdd, edit, remove, mergeDuplicates
     <div className="library-toolbar">
       <input className="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="搜尋名稱、品牌或分類" />
     </div>
+    {error && <div className="form-error" role="alert">{error} <button type="button" onClick={retry} disabled={loading}>重新整理</button></div>}
     <div className="library-group-tabs" role="tablist" aria-label="常用食物大分類">
       {([
         { id: "all" as const, label: "全部" },
@@ -506,7 +542,7 @@ function FoodLibrary({ date, foods, add, quickAdd, edit, remove, mergeDuplicates
       </div>
     )}
     <section className="food-library">
-      {groupedVisible.length ? groupedVisible.map(section => (
+      {loading ? <p className="empty">正在讀取常用食物…</p> : groupedVisible.length ? groupedVisible.map(section => (
         <div className="food-library-group" key={section.key}>
           <div className="food-library-group-heading">
             <b>{foodCategoryGroupLabel(section.group)}</b>
@@ -529,7 +565,7 @@ function FoodLibrary({ date, foods, add, quickAdd, edit, remove, mergeDuplicates
             </article>
           ))}
         </div>
-      )) : <p className="empty">尚無符合的常用食物。</p>}
+      )) : <p className="empty">{query.trim() || categoryFilter !== "all" || groupFilter !== "all" ? "尚無符合的常用食物。" : "尚無常用食物，先新增一項吧。"}</p>}
     </section>
     {groupToMerge && <Sheet title="合併重複常用食物" close={() => !merging && setGroupToMerge(null)} footer={<button className="save-btn" onClick={() => void merge()} disabled={merging}>{merging ? "合併中…" : `確認合併 ${groupToMerge.foods.length} 筆食物`}</button>}><p className="muted">以下 {groupToMerge.foods.length} 筆名稱相同，且沒有品牌衝突。確認後會優先保留品牌資料完整、使用次數較高的一筆，並刪除其餘常用食物。</p><ul className="duplicate-list">{groupToMerge.foods.map(food => <li key={food.id}><b>{food.name}</b><span>{food.brand ?? "未填品牌"} · 使用 {food.useCount} 次</span></li>)}</ul></Sheet>}
     {foodToAdd && <Sheet title={`加入${dateLabel(date)}`} close={() => !adding && setFoodToAdd(null)}><p className="muted">「{foodToAdd.name}」要記錄在哪一餐？</p><div className="meal-choices">{(["早餐", "午餐", "晚餐", "點心", "宵夜", "其他"] as MealType[]).map(meal => <button key={meal} className="parse-btn" disabled={adding} onClick={() => void addToMeal(meal)}>{meal}</button>)}</div></Sheet>}
@@ -607,7 +643,7 @@ function EntryEditor({ initial, savedFoods, close, save }: { initial: FoodEntry 
     </Sheet>
   );
 }
-function SavedFoodEditor({ initial, close, save }: { initial: SavedFoodInput | null; close: () => void; save: (food: SavedFoodInput) => Promise<void> }) {
+function SavedFoodEditor({ initial, close, save }: { initial: SavedFoodInput | null; close: () => void; save: (food: SavedFoodInput) => Promise<boolean> }) {
   const [draft, setDraft] = useState(() => draftFrom(undefined, initial ?? undefined));
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
