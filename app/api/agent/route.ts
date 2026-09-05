@@ -307,7 +307,6 @@ export async function POST(request: Request) {
         const weightKg = record.weight_kg ?? imported.user?.weight?.[record.date];
         if (weightKg !== undefined) dailyData.weightKg = weightKg;
         if (record.steps !== undefined) dailyData.steps = record.steps;
-        batch.set(dayRef(db, ownerId, record.date), dailyData, { merge: true });
         if (weightKg !== undefined || record.steps !== undefined) batch.set(db.doc(`users/${ownerId}/bodyLogs/${record.date}`), { date: record.date, ...(weightKg !== undefined ? { weightKg } : {}), ...(record.steps !== undefined ? { steps: record.steps } : {}), updatedAt: now, createdAt: now }, { merge: true });
         const importedItems = [
           ...record.foods.map((food, index) => ({
@@ -362,6 +361,7 @@ export async function POST(request: Request) {
           batch.set(entryRef(db, ownerId, record.date, id), { id, ...entry, source: "manual_estimated", confidence: entry.caloriesKcal > 0 || entry.proteinG > 0 ? "medium" : "low", time: "歷史匯入", notes: notes ?? null, createdAt: now, updatedAt: now }, { merge: true });
           foodCount += 1;
         }
+        batch.set(dayRef(db, ownerId, record.date), { ...dailyData, ...dailySummaryFields(totalForEntryData(importedItems)), entryCount: importedItems.length }, { merge: true });
       }
       await batch.commit();
       return Response.json({ ok: true, action: input.action, importedDays: imported.records.length, importedEntries: foodCount });
@@ -376,7 +376,6 @@ export async function POST(request: Request) {
         const dailyData: Record<string, unknown> = { date: record.date, updatedAt: now, createdAt: now };
         if (record.water_ml !== undefined && record.water_ml !== null) dailyData.waterMl = record.water_ml;
         else if (!input.preserveExistingWaterDates.includes(record.date)) dailyData.waterMl = FieldValue.delete();
-        batch.set(dayRef(db, ownerId, record.date), dailyData, { merge: true });
         if (record.weight_kg !== undefined || record.steps !== undefined) {
           if (record.weight_kg !== null || record.steps !== null) {
             const bodyData: Record<string, unknown> = { date: record.date, updatedAt: now, createdAt: now };
@@ -401,6 +400,21 @@ export async function POST(request: Request) {
           });
           importedEntries += 1;
         }
+        const importedNutrition = items.map(({ item }) => ({
+          calories: item.nutrition?.calories_kcal ?? 0,
+          protein: item.nutrition?.protein_g ?? 0,
+          carbs: item.nutrition?.carbohydrate_g ?? 0,
+          fat: item.nutrition?.fat_g ?? 0,
+          fiber: item.nutrition?.fiber_g ?? 0,
+          sugar: item.nutrition?.sugar_g ?? 0,
+          saturatedFat: item.nutrition?.saturated_fat_g ?? 0,
+          transFat: item.nutrition?.trans_fat_g ?? null,
+          sodium: item.nutrition?.sodium_mg ?? 0,
+          potassium: item.nutrition?.potassium_mg ?? null,
+          cholesterol: item.nutrition?.cholesterol_mg ?? null,
+          caffeine: item.nutrition?.caffeine_mg ?? 0,
+        }));
+        batch.set(dayRef(db, ownerId, record.date), { ...dailyData, ...dailySummaryFields(totalForEntryData(importedNutrition)), entryCount: items.length }, { merge: true });
       }
       if (input.data.profile) batch.set(db.doc(`users/${ownerId}`), { heightCm: input.data.profile.height_cm, targetWeightKg: input.data.profile.goal_weight_kg, dailyStepsAverage: input.data.profile.average_steps_per_day, startingWeightKg: input.data.profile.starting_weight_kg, targets: input.data.targets, updatedAt: now, createdAt: now }, { merge: true });
       await batch.commit();
