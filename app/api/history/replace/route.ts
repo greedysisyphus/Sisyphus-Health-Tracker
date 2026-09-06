@@ -1,6 +1,6 @@
 import { createHmac } from "crypto";
 import { z } from "zod";
-import { getAdminAuth } from "../../../../lib/firebase-admin";
+import { getAdminAuth } from "../../../../lib/firebase-admin-auth";
 import { historyExportSchema } from "../../../../lib/history-export";
 import { POST as agentPost } from "../../agent/route";
 
