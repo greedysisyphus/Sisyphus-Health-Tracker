@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { verifyIdToken, agentPost } = vi.hoisted(() => ({ verifyIdToken: vi.fn(), agentPost: vi.fn() }));
 
-vi.mock("../lib/firebase-admin", () => ({ getAdminAuth: () => ({ verifyIdToken }) }));
+vi.mock("../lib/firebase-admin-auth", () => ({ getAdminAuth: () => ({ verifyIdToken }) }));
 vi.mock("../app/api/agent/route", () => ({ POST: agentPost }));
 
 import { POST } from "../app/api/history/replace/route";
