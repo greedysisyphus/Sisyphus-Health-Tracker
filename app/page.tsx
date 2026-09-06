@@ -430,9 +430,9 @@ function Trends({ history }: { history: DailyOverview[] }) {
           </svg>
           <p className="weight-chart-note">{weightChart.points.length} 次量測 · 線段跨越未量測日期，不代表中間有補值紀錄</p>
         </div>
-      ) : <p className="empty">還沒有體重紀錄。在每日頁輸入體重後，這裡會自動連成趨勢線。</p>}
+      ) : <div className="overview-state"><strong>還沒有體重紀錄</strong><span>在每日頁輸入體重後，這裡會自動連成趨勢線。</span></div>}
     </section>
-    {!days.length ? <p className="empty">最近 7 天尚無可分析的飲食／水分紀錄。</p> : <>
+    {!days.length ? <div className="overview-state"><strong>最近 7 天尚無可分析的飲食／水分紀錄</strong><span>先從每日頁記幾筆，這裡就會出現週報與達成率。</span></div> : <>
       {todaySoFar && <section className="today-so-far"><div><b>今天截至目前</b><span>不計入週平均與達成率</span></div><p>熱量 {formatNutrition(todaySoFar.total.caloriesKcal, "kcal")}　蛋白質 {formatNutrition(todaySoFar.total.proteinG, "g")}　水分 {todaySoFar.waterMl} ml</p></section>}
       <section className="trend-card weekly-summary"><div><div><p>平均熱量</p><h2>{average("caloriesKcal") === null ? "—" : formatNutrition(average("caloriesKcal"), "kcal")}</h2></div><div><p>平均蛋白質</p><h2>{average("proteinG") === null ? "—" : formatNutrition(average("proteinG"), "g")}</h2></div><div><p>平均纖維</p><h2>{average("fiberG") === null ? "—" : formatNutrition(average("fiberG"), "g")}</h2></div><div><p>平均鈉</p><h2>{average("sodiumMg") === null ? "—" : formatNutrition(average("sodiumMg"), "mg")}</h2></div><div><p>平均水分</p><h2>{waterAverage === null ? "—" : Math.round(waterAverage)} <small>{waterAverage === null ? "尚無完整日" : "ml"}</small></h2></div><div><p>體重 7 日平均</p><h2>{weightAverage ?? "—"} <small>{weightAverage === null ? "未記錄" : "kg"}</small></h2></div></div></section>
       {completedDays.length ? <section className="weekly-goals"><h2>目標達成率</h2><div><GoalProgress label={`蛋白質 ${targetRangeText(targets.proteinG, "g")}`} value={completed(day => isInRange(day.total.proteinG, targets.proteinG))} total={completedDays.length} /><GoalProgress label={`水分 ${targetRangeText(targets.waterMl, "ml")}`} value={completed(day => isInRange(day.waterMl, targets.waterMl))} total={completedDays.length} /><GoalProgress label={`纖維 ≥ ${targets.fiberG} g`} value={completed(day => day.total.fiberG >= targets.fiberG)} total={completedDays.length} /><GoalProgress label={`鈉 ≤ ${targets.sodiumMg} mg`} value={completed(day => day.total.sodiumMg <= targets.sodiumMg)} total={completedDays.length} /></div></section> : <section className="weekly-goals weekly-goals-empty"><h2>目標達成率</h2><p>今天的資料仍在累積；明天起會開始計入這週達成率。</p></section>}
@@ -603,7 +603,7 @@ function FoodLibrary({ date, foods, loading, error, retry, add, quickAdd, edit, 
       </div>
     )}
     <section className="food-library">
-      {loading ? <p className="empty">正在讀取常用食物…</p> : groupedVisible.length ? groupedVisible.map(section => (
+      {loading ? <div className="overview-state" role="status"><strong>正在讀取常用食物…</strong><span>稍等一下，正在整理你的食物庫。</span></div> : groupedVisible.length ? groupedVisible.map(section => (
         <div className="food-library-group" key={section.key}>
           <div className="food-library-group-heading">
             <b>{foodCategoryGroupLabel(section.group)}</b>
@@ -626,7 +626,7 @@ function FoodLibrary({ date, foods, loading, error, retry, add, quickAdd, edit, 
             </article>
           ))}
         </div>
-      )) : <p className="empty">{query.trim() || categoryFilter !== "all" || groupFilter !== "all" ? "尚無符合的常用食物。" : "尚無常用食物，先新增一項吧。"}</p>}
+      )) : <div className="overview-state"><strong>{query.trim() || categoryFilter !== "all" || groupFilter !== "all" ? "尚無符合的常用食物" : "尚無常用食物"}</strong><span>{query.trim() || categoryFilter !== "all" || groupFilter !== "all" ? "試試清空搜尋或換一個分類。" : "先新增一項，之後就能快速加入每日紀錄。"}</span></div>}
     </section>
     {groupToMerge && <Sheet title="合併重複常用食物" close={() => !merging && setGroupToMerge(null)} footer={<button className="save-btn" onClick={() => void merge()} disabled={merging}>{merging ? "合併中…" : `確認合併 ${groupToMerge.foods.length} 筆食物`}</button>}><p className="muted">以下 {groupToMerge.foods.length} 筆名稱相同，且沒有品牌衝突。確認後會優先保留品牌資料完整、使用次數較高的一筆，並刪除其餘常用食物。</p><ul className="duplicate-list">{groupToMerge.foods.map(food => <li key={food.id}><b>{food.name}</b><span>{food.brand ?? "未填品牌"} · 使用 {food.useCount} 次</span></li>)}</ul></Sheet>}
     {foodToAdd && <Sheet title={`加入${dateLabel(date)}`} close={() => !adding && setFoodToAdd(null)}><p className="muted">「{foodToAdd.name}」要記錄在哪一餐？</p><div className="meal-choices">{(["早餐", "午餐", "晚餐", "點心", "宵夜", "其他"] as MealType[]).map(meal => <button key={meal} className="parse-btn" disabled={adding} onClick={() => void addToMeal(meal)}>{meal}</button>)}</div></Sheet>}
