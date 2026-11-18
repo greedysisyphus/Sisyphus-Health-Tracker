@@ -5,6 +5,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { auth, db, googleProvider, hasFirebaseConfig } from "../lib/firebase";
 import { TabBar } from "./tab-bar";
 import { ChatView } from "./chat/chat-view";
+import { ViewportProbe } from "./viewport-probe";
 import { calculateDailyNutrition, calculateHydrationSummary, calculateSevenDayAverage, categoryGroupOf, emptyNutrition, foodCategoryGroupLabel, foodCategoryGroups, formatLocalDate, formatNutrition, isDrinkCategory, meals, normalizeFoodCategory, parseNonNegativeNumber, totalForEntry, type FoodCategoryGroupId, type FoodEntry, type MealType, type Nutrition } from "../lib/nutrition";
 import { buildWeightTrendChart, collectWeightSamples } from "../lib/weight-trend";
 import "./tracking.css";
@@ -24,6 +25,8 @@ const DEMO_ALLOWED = process.env.NODE_ENV !== "production" || process.env.NEXT_P
 const noopSubscribe = () => () => {};
 /** Read once: switching tabs rewrites the address, which must not switch demo off. */
 let demoFlag: boolean | undefined;
+let probeFlag: boolean | undefined;
+const readProbeFlag = () => (probeFlag ??= DEMO_ALLOWED && new URLSearchParams(window.location.search).has("probe"));
 const readDemoFlag = () => (demoFlag ??= DEMO_ALLOWED && new URLSearchParams(window.location.search).has("demo"));
 const DEMO_USER = { uid: "demo", displayName: "Demo", email: "demo@example.com" } as unknown as User;
 type EditorState = FoodEntry | null | undefined;
@@ -48,6 +51,7 @@ const profileNumber = (profile: Record<string, unknown>, key: string, fallback: 
 export function HealthApp({ initialView = "daily" }: { initialView?: View }) {
   const [user, setUser] = useState<User | null>(() => auth?.currentUser ?? null);
   const demo = useSyncExternalStore(noopSubscribe, readDemoFlag, () => false);
+  const probe = useSyncExternalStore(noopSubscribe, readProbeFlag, () => false);
   const [date, setDate] = useState(() => formatLocalDate(new Date()));
   const [entries, setEntries] = useState<FoodEntry[]>([]);
   const [waterMl, setWaterMl] = useState(0);
@@ -132,19 +136,21 @@ export function HealthApp({ initialView = "daily" }: { initialView?: View }) {
     }
   }, [user]);
 
-  const loadHistory = useCallback(async (): Promise<boolean> => {
-    if (!user) return false;
+  /** true = loaded, false = failed, null = not attempted or superseded by a newer load (not an error). */
+  const loadHistory = useCallback(async (): Promise<boolean | null> => {
+    if (!user) return null;
     const loadId = historyLoadId.current + 1;
     historyLoadId.current = loadId;
     setHistoryLoading(true);
     setHistoryError("");
     try {
       const nextHistory = await listDailyOverviews(user.uid, 120, { includeEntries: false });
-      if (historyLoadId.current !== loadId) return false;
+      if (historyLoadId.current !== loadId) return null;
       setHistory(nextHistory);
       return true;
     } catch {
-      if (historyLoadId.current === loadId) setHistoryError("讀取彙整資料失敗，請再試一次。");
+      if (historyLoadId.current !== loadId) return null;
+      setHistoryError("讀取彙整資料失敗，請再試一次。");
       return false;
     } finally {
       if (historyLoadId.current === loadId) setHistoryLoading(false);
@@ -161,10 +167,10 @@ export function HealthApp({ initialView = "daily" }: { initialView?: View }) {
   useEffect(() => { const timer = window.setTimeout(() => { void loadLibrary().catch(() => undefined); }, 0); return () => window.clearTimeout(timer); }, [loadLibrary]);
   useEffect(() => { if (!user) return; void getUserProfile(user.uid).then(profile => { if (!profile) return; setTracking(parseTracking(profile)); setHealthFocus(parseHealthFocus(profile)); setTargets(current => ({ ...current, caloriesKcal: { min: profileNumber(profile, "calorieTargetMin", current.caloriesKcal.min), max: profileNumber(profile, "calorieTargetMax", current.caloriesKcal.max) }, proteinG: { min: profileNumber(profile, "proteinTargetMin", current.proteinG.min), max: profileNumber(profile, "proteinTargetMax", current.proteinG.max) }, carbsG: { min: profileNumber(profile, "carbTargetMin", current.carbsG.min), max: profileNumber(profile, "carbTargetMax", current.carbsG.max) }, fatG: { min: profileNumber(profile, "fatTargetMin", current.fatG.min), max: profileNumber(profile, "fatTargetMax", current.fatG.max) }, waterMl: { min: profileNumber(profile, "waterTargetMinMl", current.waterMl.min), max: profileNumber(profile, "waterTargetMaxMl", current.waterMl.max) }, fiberG: profileNumber(profile, "fiberTarget", current.fiberG), sodiumMg: profileNumber(profile, "sodiumLimit", current.sodiumMg) })); }).catch(() => setNotice("讀取個人目標失敗。")); }, [user]);
   useEffect(() => {
-    if (view === "daily") return;
+    if (view === "daily" || view === "chat") return;
     const timer = window.setTimeout(() => {
       void loadHistory().then(ok => {
-        if (!ok) setNotice(current => current.startsWith("已匯入") ? current : "讀取彙整資料失敗。");
+        if (ok === false) setNotice(current => current.startsWith("已匯入") ? current : "讀取彙整資料失敗。");
       });
     }, 0);
     return () => window.clearTimeout(timer);
@@ -261,7 +267,7 @@ export function HealthApp({ initialView = "daily" }: { initialView?: View }) {
     // Prefer overview so the imported day list is visible immediately after the sheet closes.
     setView("overview");
     const [dailyOk, historyOk] = await Promise.all([loadDaily(), loadHistory()]);
-    setNotice(formatHistoryImportNotice(preview, { refreshFailed: !(dailyOk && historyOk) }));
+    setNotice(formatHistoryImportNotice(preview, { refreshFailed: !(dailyOk && historyOk !== false) }));
   };
   const prepareChatGPTAnalysis = async () => {
     if (!user) return;
@@ -316,6 +322,7 @@ export function HealthApp({ initialView = "daily" }: { initialView?: View }) {
     {entryEditor !== undefined && <EntryEditor initial={entryEditor} savedFoods={savedFoods} close={() => setEntryEditor(undefined)} save={saveDailyEntry} />}
     {foodEditor !== undefined && <SavedFoodEditor initial={foodEditor} close={() => setFoodEditor(undefined)} save={saveFood} />}
     {exporting && <ExportSheet close={() => setExporting(false)} exportRecords={exportRecords} replaceHistory={replaceHistory} copyAnalysis={copyChatGPTAnalysis} analysisReady={Boolean(analysisTexts[1])} analysisPreparing={analysisPreparing} />}
+    {DEMO_ALLOWED && probe && <ViewportProbe />}
     <TabBar className="dash-tab-bar" active={view === "foods" ? "settings" : view} badge={chatBusy} onSelect={selectView} />
   </main></TrackingContext.Provider></TargetsContext.Provider>;
 }
