@@ -17,3 +17,16 @@
 .macro-row.no-water{grid-template-columns:repeat(3,1fr)}
 @media (prefers-reduced-motion:reduce){.switch,.switch::after{transition:none}}
 @media(max-width:760px){.tracking-card{padding:18px 16px}}
+
+/* Entry points added with the Eris tab bar. */
+.side-chat{display:flex;align-items:center;gap:10px;margin:14px 0 0;padding:10px 12px;border-radius:12px;background:var(--sage-pale);color:var(--sage-dark);font-size:14px;font-weight:600;text-decoration:none;transition:transform .15s ease}
+.side-chat:active{transform:scale(.97)}
+.side-chat img{width:28px;height:28px;border-radius:50%;object-fit:cover}
+.side-chat b{margin-left:auto;min-width:20px;height:20px;padding:0 6px;border-radius:999px;background:#e8774a;color:#fff;font-size:11px;display:grid;place-items:center}
+.settings-link{width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 18px;padding:16px 18px;border:1px solid var(--line);border-radius:var(--radius-md);background:var(--surface);box-shadow:var(--shadow-soft);text-align:left;cursor:pointer;color:var(--ink);transition:transform .15s ease}
+.settings-link:active{transform:scale(.985)}
+.settings-link span{display:grid;gap:3px}
+.settings-link b{font-size:15px;font-weight:600}
+.settings-link small{font-size:12px;color:var(--muted)}
+.settings-link i{font-style:normal;font-size:24px;color:var(--muted)}
+@media(max-width:760px){.app-shell .content{padding-bottom:calc(env(safe-area-inset-bottom) + 104px)}}

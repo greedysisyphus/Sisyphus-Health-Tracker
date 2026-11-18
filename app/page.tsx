@@ -2,10 +2,14 @@
 
 import { onAuthStateChanged, signInWithPopup, signOut, type User } from "firebase/auth";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { auth, googleProvider, hasFirebaseConfig } from "../lib/firebase";
+import { collection, onSnapshot, query, where } from "firebase/firestore";
+import Link from "next/link";
+import { auth, db, googleProvider, hasFirebaseConfig } from "../lib/firebase";
+import { TabBar } from "./tab-bar";
 import { calculateDailyNutrition, calculateHydrationSummary, calculateSevenDayAverage, categoryGroupOf, emptyNutrition, foodCategoryGroupLabel, foodCategoryGroups, formatLocalDate, formatNutrition, isDrinkCategory, meals, normalizeFoodCategory, parseNonNegativeNumber, totalForEntry, type FoodCategoryGroupId, type FoodEntry, type MealType, type Nutrition } from "../lib/nutrition";
 import { buildWeightTrendChart, collectWeightSamples } from "../lib/weight-trend";
 import "./tracking.css";
+import "./eris-theme.css";
 import { defaultTracking, parseHealthFocus, parseTracking, trackingOptions, type TrackingKey, type TrackingPrefs } from "../lib/tracking";
 import { resolveDayBodyMetrics } from "../lib/agent-health";
 import { buildHistoryExportDay, formatHistoryImportNotice, historyExportPreviewFromData, validateHistoryExport, type HistoryExport, type HistoryExportPreview } from "../lib/history-export";
@@ -37,6 +41,13 @@ export default function Home() {
   const [loading, setLoading] = useState(Boolean(auth));
   const [notice, setNotice] = useState("");
   const [view, setView] = useState<View>("daily");
+  /** Switch view and keep it in the address bar, so reopening the app returns to the same tab. */
+  const selectView = (next: View) => { setView(next); window.history.replaceState(null, "", next === "daily" ? "/" : `/?view=${next}`); };
+  const [chatBusy, setChatBusy] = useState(0);
+  useEffect(() => {
+    if (!user || !db) return;
+    return onSnapshot(query(collection(db, `users/${user.uid}/chatMessages`), where("status", "==", "processing")), snapshot => setChatBusy(snapshot.size), () => setChatBusy(0));
+  }, [user]);
   const [history, setHistory] = useState<DailyOverview[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState("");
@@ -64,7 +75,12 @@ export default function Home() {
 
   useEffect(() => {
     if (!auth) return;
-    return onAuthStateChanged(auth, current => { setUser(current); setLoading(false); });
+    let first = true;
+    return onAuthStateChanged(auth, current => {
+      // Open on the view named in the address (the chat page's tabs link to /?view=trends etc.).
+      if (first) { first = false; const requested = new URLSearchParams(window.location.search).get("view"); if (requested === "overview" || requested === "trends" || requested === "foods" || requested === "settings") setView(requested); }
+      setUser(current); setLoading(false);
+    });
   }, []);
 
   const loadDaily = useCallback(async (): Promise<boolean> => {
@@ -271,7 +287,7 @@ export default function Home() {
   const changeTracking = async (key: TrackingKey, on: boolean) => { if (!user) return; const next = { ...tracking, [key]: on }; setTracking(next); try { await saveTrackingSettings(user.uid, { tracking: next }); setNotice(on ? `已開始記錄${trackingOptions.find(option => option.key === key)?.label}。` : `已關閉${trackingOptions.find(option => option.key === key)?.label}，畫面和 Eris 都不會再提。`); } catch { setTracking(tracking); setNotice("設定沒有存到，請再試一次。"); } };
   const changeHealthFocus = async (value: string) => { if (!user) return; const next = value.trim().slice(0, 80); try { await saveTrackingSettings(user.uid, { healthFocus: next }); setHealthFocus(next); setNotice("已更新健康重點。"); } catch { setNotice("健康重點沒有存到，請再試一次。"); } };
   return <TargetsContext.Provider value={targetState}><TrackingContext.Provider value={tracking}><main className="app-shell">
-    <aside className="sidebar"><div className="brand"><i>n</i><span>日常營養</span></div><p className="side-date">飲食、體重與喝水，都會安全地儲存在你的帳號。</p><Nav view={view} setView={setView} /><div className="profile"><div>{(user.displayName ?? user.email ?? "你").slice(0, 1)}</div><span>{user.displayName ?? "我的帳號"}<small>{user.email}</small></span><button className="text-button" onClick={() => void signOut(auth!)}>登出</button></div></aside>
+    <aside className="sidebar"><div className="brand"><i>n</i><span>日常營養</span></div><p className="side-date">飲食、體重與喝水，都會安全地儲存在你的帳號。</p><Nav view={view} setView={selectView} /><Link className="side-chat" href="/chat"><img src="/eris-96.png" alt="" />和 Eris 對話{chatBusy > 0 && <b>{chatBusy}</b>}</Link><div className="profile"><div>{(user.displayName ?? user.email ?? "你").slice(0, 1)}</div><span>{user.displayName ?? "我的帳號"}<small>{user.email}</small></span><button className="text-button" onClick={() => void signOut(auth!)}>登出</button></div></aside>
     <section className="content">
       <div className="mobile-topbar"><div className="brand"><i>n</i><span>日常營養</span></div><button className="text-button" onClick={() => void signOut(auth!)}>登出</button></div>
       {notice && <div className="notice" role="status"><span className="notice-copy">{notice}</span><button type="button" className="notice-dismiss" onClick={() => setNotice("")} aria-label="關閉提示">關閉</button></div>}
@@ -279,12 +295,12 @@ export default function Home() {
       {view === "overview" && <Overview history={history.filter(day => day.entryCount > 0 || day.waterMl > 0 || day.total.caloriesKcal > 0)} loading={historyLoading} error={historyError} retry={() => void loadHistory()} openDate={next => { setDate(next); setView("daily"); }} exportData={openExport} />}
       {view === "trends" && <Trends history={history} />}
       {view === "foods" && <FoodLibrary date={date} foods={savedFoods} loading={savedFoodsLoading} error={savedFoodsError} retry={() => void loadLibrary().catch(() => undefined)} add={() => setFoodEditor(null)} quickAdd={addSavedFoodToDay} edit={setFoodEditor} remove={deleteFood} mergeDuplicates={mergeDuplicateFoods} applySuggestedHydration={applySuggestedHydration} />}
-      {view === "settings" && <TargetsSettings initial={targetState} healthFocus={healthFocus} changeTracking={changeTracking} changeHealthFocus={changeHealthFocus} save={async next => { if (!user) return; await saveHealthTargets(user.uid, { calorieTargetMin: next.caloriesKcal.min, calorieTargetMax: next.caloriesKcal.max, proteinTargetMin: next.proteinG.min, proteinTargetMax: next.proteinG.max, carbTargetMin: next.carbsG.min, carbTargetMax: next.carbsG.max, fatTargetMin: next.fatG.min, fatTargetMax: next.fatG.max, waterTargetMinMl: next.waterMl.min, waterTargetMaxMl: next.waterMl.max, fiberTarget: next.fiberG, sodiumLimit: next.sodiumMg }); setTargets(next); setNotice("已更新每日目標。"); }} />}
+      {view === "settings" && <TargetsSettings openFoods={() => setView("foods")} initial={targetState} healthFocus={healthFocus} changeTracking={changeTracking} changeHealthFocus={changeHealthFocus} save={async next => { if (!user) return; await saveHealthTargets(user.uid, { calorieTargetMin: next.caloriesKcal.min, calorieTargetMax: next.caloriesKcal.max, proteinTargetMin: next.proteinG.min, proteinTargetMax: next.proteinG.max, carbTargetMin: next.carbsG.min, carbTargetMax: next.carbsG.max, fatTargetMin: next.fatG.min, fatTargetMax: next.fatG.max, waterTargetMinMl: next.waterMl.min, waterTargetMaxMl: next.waterMl.max, fiberTarget: next.fiberG, sodiumLimit: next.sodiumMg }); setTargets(next); setNotice("已更新每日目標。"); }} />}
     </section>
     {entryEditor !== undefined && <EntryEditor initial={entryEditor} savedFoods={savedFoods} close={() => setEntryEditor(undefined)} save={saveDailyEntry} />}
     {foodEditor !== undefined && <SavedFoodEditor initial={foodEditor} close={() => setFoodEditor(undefined)} save={saveFood} />}
     {exporting && <ExportSheet close={() => setExporting(false)} exportRecords={exportRecords} replaceHistory={replaceHistory} copyAnalysis={copyChatGPTAnalysis} analysisReady={Boolean(analysisTexts[1])} analysisPreparing={analysisPreparing} />}
-    <Nav view={view} setView={setView} mobile />
+    <TabBar className="dash-tab-bar" active={view === "foods" ? "settings" : view} badge={chatBusy} onSelect={selectView} />
   </main></TrackingContext.Provider></TargetsContext.Provider>;
 }
 
@@ -475,7 +491,7 @@ function TrendSparkline({ label, unit, points, target, connectGaps = false }: { 
   return <article className="trend-sparkline"><div className="trend-sparkline-title"><div><b>{label} 7 日平均</b><strong>{average === null ? "—" : valueText(average)} <small>{unit}</small></strong></div>{target !== undefined && <span>目標 {valueText(target)} {unit}</span>}</div>{enoughForTrend ? <><svg viewBox="0 0 350 100" role="img" aria-label={`${label}最近 7 天趨勢`}><path className="spark-grid" d="M14 12H336M14 50H336M14 88H336" />{target !== undefined && <path className="spark-target" d={`M14 ${y(target).toFixed(1)}H336`} />}<path className="spark-line" d={path} />{points.map((point, index) => point.value === null ? null : <circle key={point.date} className="spark-dot" cx={x(index)} cy={y(point.value)} r="3.1" />)}</svg><div className="spark-labels">{points.map(point => <span key={point.date}>{point.date.slice(8)}<b>{point.value === null ? "—" : valueText(point.value)}</b></span>)}</div></> : <p className="spark-empty">{values.length ? `已有 ${values.length} 筆${label}；累積至 ${connectGaps ? 2 : 3} 筆後顯示走勢` : `尚無${label}紀錄`}</p>}</article>;
 }
 function GoalProgress({ label, value, total }: { label: string; value: number; total: number }) { return <article><div><b>{label}</b><span>{value} / {total} 天</span></div><div className="goal-meter"><i style={{ width: `${total ? value / total * 100 : 0}%` }} /></div></article>; }
-function TargetsSettings({ initial, save, healthFocus, changeTracking, changeHealthFocus }: { initial: HealthTargets; save: (targets: HealthTargets) => Promise<void>; healthFocus: string; changeTracking: (key: TrackingKey, on: boolean) => Promise<void>; changeHealthFocus: (value: string) => Promise<void> }) {
+function TargetsSettings({ openFoods, initial, save, healthFocus, changeTracking, changeHealthFocus }: { openFoods: () => void; initial: HealthTargets; save: (targets: HealthTargets) => Promise<void>; healthFocus: string; changeTracking: (key: TrackingKey, on: boolean) => Promise<void>; changeHealthFocus: (value: string) => Promise<void> }) {
   const tracking = useContext(TrackingContext);
   const [values, setValues] = useState(initial);
   const [saving, setSaving] = useState(false);
@@ -488,7 +504,7 @@ function TargetsSettings({ initial, save, healthFocus, changeTracking, changeHea
   const updateRange = (key: RangeTargetKey, bound: keyof TargetRange, input: string) => { const value = parseNonNegativeNumber(input); if (value !== null) setValues(current => ({ ...current, [key]: { ...current[key], [bound]: value } })); };
   const updateMinimum = (key: "fiberG" | "sodiumMg", input: string) => { const value = parseNonNegativeNumber(input); if (value !== null) setValues(current => ({ ...current, [key]: value })); };
   const submit = () => { const invalid = (Object.keys(defaultTargets) as (keyof HealthTargets)[]).find(key => typeof values[key] === "object" && values[key].min > values[key].max); if (invalid) return setError("每個區間的最低值不可大於最高值。"); setError(""); setSaving(true); void save(values).finally(() => setSaving(false)); };
-  return <><header><div><p className="eyebrow">MY PLAN</p><h1>把方向，放在眼前。</h1><p className="muted">這些是每日參考區間，不必每天完美達成；看一週平均更有意義。</p></div></header><section className="tracking-card"><div className="target-group-heading"><h2>要記錄哪些項目</h2><p>關掉的項目不會出現在每日頁和週報，Eris 也不會再記或提醒。熱量和三大營養素一律記錄。</p></div><div className="tracking-list">{trackingOptions.map(option => <label className="tracking-row" key={option.key}><span><b>{option.label}</b><small>{option.hint}</small></span><input type="checkbox" role="switch" className="switch" checked={tracking[option.key]} onChange={event => void changeTracking(option.key, event.target.checked)} /></label>)}</div><label className="focus-field"><span><b>我的健康重點</b><small>例如「減脂・多吃蛋白質」，Eris 給建議時會以這個為主</small></span><input type="text" maxLength={80} placeholder="還沒設定" defaultValue={healthFocus} key={healthFocus} onBlur={event => { if (event.target.value.trim() !== healthFocus) void changeHealthFocus(event.target.value); }} /></label></section><section className="targets-hero"><p>目前健康重點</p><strong>{healthFocus || "還沒設定"}</strong><span>每日頁與週報會依這些設定，標示偏低、達標或偏高。</span></section><form className="targets-card" onSubmit={event => { event.preventDefault(); submit(); }}>{groups.map(group => <section className="target-group" key={group.title}><div className="target-group-heading"><h2>{group.title}</h2><p>{group.description}</p></div><div className="targets-grid">{group.fields.filter(field => field.key !== "waterMl" || tracking.water).map(field => field.type === "range" ? <label className="target-range" key={field.key}><span>{field.label}<small>{field.hint}</small></span><div className="target-range-inputs"><input aria-label={`${field.label}最低值`} type="number" inputMode="decimal" min="0" step="any" value={values[field.key].min} onChange={event => updateRange(field.key, "min", event.target.value)} /><i>至</i><input aria-label={`${field.label}最高值`} type="number" inputMode="decimal" min="0" step="any" value={values[field.key].max} onChange={event => updateRange(field.key, "max", event.target.value)} /><em>{field.unit}</em></div></label> : <label key={field.key}><span>{field.label}<small>{field.hint}</small></span><div><input type="number" inputMode="decimal" min="0" step="any" value={values[field.key]} onChange={event => updateMinimum(field.key, event.target.value)} /><em>{field.unit}</em></div></label>)}</div></section>)}{error && <p className="form-error targets-error">{error}</p>}<button className="save-btn" type="submit" disabled={saving}>{saving ? "儲存中…" : "儲存我的每日目標"}</button></form></>;
+  return <><header><div><p className="eyebrow">MY PLAN</p><h1>把方向，放在眼前。</h1><p className="muted">這些是每日參考區間，不必每天完美達成；看一週平均更有意義。</p></div></header><button type="button" className="settings-link" onClick={openFoods}><span><b>我的食物</b><small>常吃的食物、飲品與每份水分</small></span><i aria-hidden="true">›</i></button><section className="tracking-card"><div className="target-group-heading"><h2>要記錄哪些項目</h2><p>關掉的項目不會出現在每日頁和週報，Eris 也不會再記或提醒。熱量和三大營養素一律記錄。</p></div><div className="tracking-list">{trackingOptions.map(option => <label className="tracking-row" key={option.key}><span><b>{option.label}</b><small>{option.hint}</small></span><input type="checkbox" role="switch" className="switch" checked={tracking[option.key]} onChange={event => void changeTracking(option.key, event.target.checked)} /></label>)}</div><label className="focus-field"><span><b>我的健康重點</b><small>例如「減脂・多吃蛋白質」，Eris 給建議時會以這個為主</small></span><input type="text" maxLength={80} placeholder="還沒設定" defaultValue={healthFocus} key={healthFocus} onBlur={event => { if (event.target.value.trim() !== healthFocus) void changeHealthFocus(event.target.value); }} /></label></section><section className="targets-hero"><p>目前健康重點</p><strong>{healthFocus || "還沒設定"}</strong><span>每日頁與週報會依這些設定，標示偏低、達標或偏高。</span></section><form className="targets-card" onSubmit={event => { event.preventDefault(); submit(); }}>{groups.map(group => <section className="target-group" key={group.title}><div className="target-group-heading"><h2>{group.title}</h2><p>{group.description}</p></div><div className="targets-grid">{group.fields.filter(field => field.key !== "waterMl" || tracking.water).map(field => field.type === "range" ? <label className="target-range" key={field.key}><span>{field.label}<small>{field.hint}</small></span><div className="target-range-inputs"><input aria-label={`${field.label}最低值`} type="number" inputMode="decimal" min="0" step="any" value={values[field.key].min} onChange={event => updateRange(field.key, "min", event.target.value)} /><i>至</i><input aria-label={`${field.label}最高值`} type="number" inputMode="decimal" min="0" step="any" value={values[field.key].max} onChange={event => updateRange(field.key, "max", event.target.value)} /><em>{field.unit}</em></div></label> : <label key={field.key}><span>{field.label}<small>{field.hint}</small></span><div><input type="number" inputMode="decimal" min="0" step="any" value={values[field.key]} onChange={event => updateMinimum(field.key, event.target.value)} /><em>{field.unit}</em></div></label>)}</div></section>)}{error && <p className="form-error targets-error">{error}</p>}<button className="save-btn" type="submit" disabled={saving}>{saving ? "儲存中…" : "儲存我的每日目標"}</button></form></>;
 }
 const hydrationSuggestionFor = (food: SavedFoodSummary): number | null => {
   const text = `${food.name} ${food.brand ?? ""}`.toLowerCase();

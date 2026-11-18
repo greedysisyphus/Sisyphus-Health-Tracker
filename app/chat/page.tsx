@@ -7,6 +7,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { auth, db, googleProvider } from "../../lib/firebase";
 import { fitPhotos, newMessageId, outbox, preparePhoto, type OutboxItem } from "../../lib/chat-client";
+import { TabBar } from "../tab-bar";
 
 type ServerStatus = "sending" | "retry" | "processing" | "done" | "failed";
 type ChatDoc = { id: string; text: string; thumbs: string[]; photoCount: number; status: ServerStatus; reply: string | null; createdAt: number };
@@ -260,6 +261,7 @@ export default function ChatPage() {
         <p>請 Jovi 把這個帳號加進設定。登入的是 {me.email ?? "這個 Google 帳號"}。</p>
         <Link className="chat-secondary" href="/">先去看紀錄</Link>
       </section>
+      <div className="chat-tabs"><TabBar active="chat" /></div>
     </main>
   );
 
@@ -273,7 +275,6 @@ export default function ChatPage() {
           <strong>Eris</strong>
           <span key={working ? "busy" : "idle"}>{working ? `正在記錄 ${working} 則…` : "傳照片或打字，我幫你記"}</span>
         </div>
-        <Link className="chat-link" href="/">看紀錄</Link>
       </header>
 
       <div className="chat-list" ref={listRef} onScroll={onScroll}>
@@ -323,6 +324,7 @@ export default function ChatPage() {
         </div>
         <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={event => { void addPhotos(event.target.files); event.target.value = ""; }} />
       </footer>
+      <div className="chat-tabs"><TabBar active="chat" badge={working} /></div>
 
       {toast && <div key={toast.key} className={`chat-toast ${toast.tone}`} role="status">
         {toast.tone === "ok" && <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5 10 17.5 19 7.5" /></svg>}{toast.text}
