@@ -182,3 +182,24 @@ html:has(:is(.app-shell,.setup)),body:has(:is(.app-shell,.setup)){background:#f6
 @media(min-width:761px){.settings-signout{display:none}}
 @media(max-width:760px){.app-shell .content{padding-top:calc(env(safe-area-inset-top) + 18px)}}
 .app-shell .brand .brand-avatar{width:30px;height:30px;border-radius:50%;object-fit:cover}
+
+/* Food entries on phones: a plain grid (name, then calories, then the buttons) instead of the old absolutely
+   positioned rows, which overlapped once names, servings and the source badge wrapped. */
+@media(max-width:760px){
+  .app-shell .entry-list .entry{position:relative;display:grid;grid-template-columns:40px minmax(0,1fr);grid-template-areas:"icon main" "icon nut" "actions actions";column-gap:12px;row-gap:8px;align-items:start;padding:14px 14px 12px}
+  .app-shell .entry-list .entry .food-icon{grid-area:icon}
+  .app-shell .entry-list .entry > div:nth-child(2){grid-area:main;min-width:0}
+  .app-shell .entry-list .entry > div:nth-child(2) b{white-space:normal;overflow:visible}
+  .app-shell .entry-list .entry > div:nth-child(2) p{margin-top:3px;line-height:1.45}
+  .app-shell .entry-list .entry .entry-source{margin-top:6px}
+  .app-shell .entry-list .entry .entry-nutrition{grid-area:nut;position:static;inset:auto;margin:0;text-align:left;display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 12px}
+  .app-shell .entry-list .entry .entry-nutrition b{display:inline;font-size:20px}
+  .app-shell .entry-list .entry .entry-nutrition span{display:inline;margin:0;color:var(--muted)}
+  .app-shell .entry-list .entry .entry-actions{grid-area:actions;position:static;inset:auto;display:flex;justify-content:flex-end;margin:2px 0 0;gap:8px}
+  .app-shell .entry-list .entry .entry-actions button{min-height:34px;padding:6px 14px;font-size:13.5px}
+}
+/* Weight / steps on phones: label above the field so "體重（kg）" and "步數" never wrap letter by letter. */
+@media(max-width:760px){
+  .app-shell .body-inputs .weight-input{flex-direction:column;align-items:stretch;justify-content:flex-start;gap:6px;font-size:13px;font-weight:600;color:var(--muted)}
+  .app-shell .body-inputs .weight-input input{width:100%;font-size:20px!important;font-weight:600;color:var(--ink);padding:4px 0 6px}
+}
