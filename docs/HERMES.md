@@ -19,6 +19,23 @@ HERMES_API_SECRET=與 Vercel 相同的一串隨機密鑰
 
 第二位使用者的 Hermes 執行環境單獨設定 `HEALTH_TRACKER_URL`、`HERMES_API_SECRET`（值為部署端的 `HERMES_SECONDARY_API_SECRET`）及 `HEALTH_TRACKER_AGENT_ID=secondary`；不可把原使用者的密鑰交給這個環境。`health_api.py` 會送出 `x-health-identity: secondary`，伺服器以該身份選擇**對應密鑰和預先設定的 UID**，不接受請求指定 UID。若共用同一 Hermes 實例，必須確保每位使用者的執行環境和密鑰隔離；單靠對話提示詞不能隔離密鑰或身份。網站儀表板仍由 Firebase 登入身份讀取各自 `users/{uid}` 資料。
 
+### 網站聊天頁（`/chat`，Eris）
+
+第二位使用者可以不用 Discord，直接在網站的 `/chat` 傳文字或多張照片。網站收到後替她在 Hermes 開一個背景工作（`POST /v1/runs`，`Idempotency-Key` 為訊息 ID），Hermes 一收下就回覆手機「已送出」，之後她可以關掉 App；Hermes 照 `health-log` 寫入，`eventId` 用同一個訊息 ID、`source` 為 `dashboard`，重送不會重複記錄。對話紀錄存在 `users/{uid}/chatMessages`，只存縮圖，不存原圖。
+
+部署端另外設定（缺任何一個，她的聊天頁會顯示「還沒開通」）：
+
+```text
+HERMES_SECONDARY_CHAT_URL=https://<Hermes 對外網址>/p/<她的 profile>
+HERMES_SECONDARY_CHAT_KEY=<她 profile 的 API_SERVER_KEY，至少 32 字元>
+```
+
+Hermes 端：她有自己的 profile（`hermes profile create <名稱> --clone`），其 `.env` 只放她的 `HERMES_API_SECRET`（= 部署端 `HERMES_SECONDARY_API_SECRET`）、`HEALTH_TRACKER_AGENT_ID=secondary` 和她自己的 `API_SERVER_KEY`；記憶庫（hindsight bankId）要和原使用者分開；`platform_toolsets.api_server` 只開 `terminal, skills, vision, memory`。她的終端機要用沙盒（`terminal.backend: docker`、`docker_image: python:3.12-slim`），否則她那份 Hermes 以 root 執行時讀得到主 profile 的 `.env`；開發用外掛（ponytail、orca-status 等）在她的 profile 關掉，`memories/` 不要沿用原使用者的。主 `.env` 需 `API_SERVER_ENABLED=true` 和主 profile 自己的 `API_SERVER_KEY`。對外只開 `/p/<她的 profile>` 這個路徑，主 profile 不對外。
+
+Hermes 只會把 skill 宣告過的環境變數交給終端機，所以 `HEALTH_TRACKER_AGENT_ID` 必須列在 `SKILL.md` 的 `required_environment_variables`；Linux 主機上的 skill 也要在 `platforms` 列出 `linux`，否則 `skill_view` 會拒絕載入。
+
+本機看畫面：開發模式下打開 `/chat?demo`，不用登入、不會送出任何資料（正式版本會移除）。
+
 ## 安裝與更新 Skill
 
 將專案中的 `hermes/health-log/` 複製到 Hermes 主機的 `~/.hermes/skills/health-log/`。必須保留：

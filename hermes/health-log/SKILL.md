@@ -13,6 +13,10 @@ required_environment_variables:
     prompt: Health Tracker API secret
     help: 與 Vercel HERMES_API_SECRET 相同的值
     required_for: full functionality
+  - name: HEALTH_TRACKER_AGENT_ID
+    prompt: Health Tracker identity (secondary only)
+    help: 只有第二位使用者的 Hermes 設為 secondary；原使用者不要設定
+    optional: true
 metadata:
   hermes:
     tags: [health, food, nutrition, water, weight, Discord]
