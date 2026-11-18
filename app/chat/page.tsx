@@ -375,7 +375,7 @@ function MessageRow({ row, fresh, onRetry, onOpen }: { row: Row; fresh: boolean;
         {chip}
       </article>
       {status === "processing" && (
-        <article className="msg eris fresh"><img src="/eris-96.png" alt="" className="msg-avatar" /><div className="bubble typing" aria-label="Eris 正在記錄"><i /><i /><i /></div></article>
+        <article className="msg eris fresh"><img src="/eris-96.png" alt="" className="msg-avatar" /><div className="eris-working"><div className="bubble typing" aria-label="Eris 正在記錄"><i /><i /><i /></div><small>{row.thumbs.length ? "正在看照片、算熱量，通常 30 秒到 1 分鐘，可以先關掉 App" : "正在處理，可以先關掉 App"}</small></div></article>
       )}
       {status === "done" && (
         <article className={`msg eris${fresh ? " fresh" : ""}`}><img src="/eris-96.png" alt="" className="msg-avatar" /><div className="bubble"><p>{row.doc?.reply || "這則的回覆已經過期了，請到「看紀錄」確認有沒有記上。"}</p></div></article>
