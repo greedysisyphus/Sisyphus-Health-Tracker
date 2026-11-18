@@ -60,6 +60,8 @@ export default function ChatPage() {
   const [preparing, setPreparing] = useState(0);
   const [toast, setToast] = useState<{ key: number; text: string; tone: "ok" | "warn" } | null>(null);
   const [viewer, setViewer] = useState<string | null>(null);
+  /** On phones the keyboard is up while the message box has focus; the tabs step aside. */
+  const [typing, setTyping] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const textRef = useRef<HTMLTextAreaElement>(null);
@@ -87,12 +89,11 @@ export default function ChatPage() {
     const apply = () => {
       root.style.setProperty("--chat-vh", `${viewport.height}px`);
       root.style.setProperty("--chat-vt", `${viewport.offsetTop}px`);
-      root.classList.toggle("chat-keyboard", viewport.height < window.innerHeight * 0.78);
     };
     apply();
     viewport.addEventListener("resize", apply);
     viewport.addEventListener("scroll", apply);
-    return () => { viewport.removeEventListener("resize", apply); viewport.removeEventListener("scroll", apply); root.classList.remove("chat-keyboard"); };
+    return () => { viewport.removeEventListener("resize", apply); viewport.removeEventListener("scroll", apply); };
   }, []);
 
   useEffect(() => {
@@ -281,7 +282,7 @@ export default function ChatPage() {
   const canSend = (text.trim().length > 0 || photos.length > 0) && preparing === 0;
 
   return (
-    <main className="chat-app">
+    <main className={`chat-app${typing ? " typing" : ""}`}>
       <header className="chat-head">
         <div className="chat-avatar"><img src="/eris-96.png" alt="" /><i className={working ? "busy" : ""} /></div>
         <div className="chat-title">
@@ -330,6 +331,7 @@ export default function ChatPage() {
           <textarea
             ref={textRef} rows={1} value={text} placeholder={photos.length ? "補充一句（可不填）" : "跟 Eris 說吃了什麼…"}
             onChange={event => setText(event.target.value)} onKeyDown={onKeyDown} enterKeyHint="enter"
+            onFocus={() => setTyping(window.matchMedia("(pointer: coarse)").matches)} onBlur={() => setTyping(false)}
           />
           <button className={`chat-send${canSend ? " ready" : ""}`} disabled={!canSend} onClick={() => void submit()} aria-label="送出">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5.5 11.5 12 5l6.5 6.5" /></svg>
