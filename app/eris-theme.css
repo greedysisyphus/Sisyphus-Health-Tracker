@@ -137,3 +137,13 @@ body:has(:is(.app-shell,.setup)){background:#f6f4ef}
     .app-shell .bottom-nav{background:var(--e-panel)}
   }
 }
+
+/* Cold-start splash (first open only): same look as the chat page, no wall of text. */
+.app-splash{min-height:100dvh;margin:0;max-width:none;display:grid;place-content:center;justify-items:center;gap:18px;background:var(--e-bg)}
+.app-splash img{width:72px;height:72px;border-radius:50%;box-shadow:var(--shadow-soft);animation:splash-float 2.4s ease-in-out infinite}
+.splash-dots{display:flex;gap:6px}
+.splash-dots i{width:7px;height:7px;border-radius:50%;background:var(--muted);animation:splash-dot 1.2s ease-in-out infinite}
+.splash-dots i:nth-child(2){animation-delay:.15s}.splash-dots i:nth-child(3){animation-delay:.3s}
+@keyframes splash-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
+@keyframes splash-dot{0%,60%,100%{transform:translateY(0);opacity:.45}30%{transform:translateY(-4px);opacity:1}}
+@media (prefers-reduced-motion:reduce){.app-splash img,.splash-dots i{animation:none}}

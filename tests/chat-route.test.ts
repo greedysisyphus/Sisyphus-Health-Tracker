@@ -162,6 +162,14 @@ describe("dashboard chat route", () => {
     expect(instructions).not.toContain("不記錄");
   });
 
+  it("accepts detailed photo thumbnails and explains a rejection", async () => {
+    const bigThumb = `data:image/jpeg;base64,${"C".repeat(60_000)}`;
+    expect((await send({ id: "msg_00000006", photos: [photo], thumbs: [bigThumb] })).status).toBe(200);
+    const tooMany = await send({ id: "msg_00000007", photos: Array(10).fill(photo), thumbs: Array(10).fill(`data:image/jpeg;base64,${"D".repeat(100_000)}`) });
+    expect(tooMany.status).toBe(400);
+    expect((await tooMany.json()).reasons).toContain("thumbs_too_large");
+  });
+
   it("reports whether chat is enabled for the signed-in user", async () => {
     const enabled = await GET(new Request("https://example.com/api/chat", { headers: { Authorization: "Bearer token" } }));
     expect(await enabled.json()).toMatchObject({ enabled: true });

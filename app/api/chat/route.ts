@@ -53,7 +53,11 @@ export async function POST(request: Request) {
   let body: unknown;
   try { body = await request.json(); } catch { return json({ error: "invalid_json" }, 400); }
   const parsed = chatSendSchema.safeParse(body);
-  if (!parsed.success) return json({ error: "invalid_request" }, 400);
+  if (!parsed.success) {
+    const reasons = parsed.error.issues.map(issue => issue.message === "Invalid input" || !issue.message ? issue.path.join(".") : issue.message);
+    console.warn("chat_invalid_request", { uid, reasons: reasons.slice(0, 5) });
+    return json({ error: "invalid_request", reasons: reasons.slice(0, 5) }, 400);
+  }
   const message = parsed.data;
 
   const ref = messages(uid).doc(message.id);

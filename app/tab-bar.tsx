@@ -6,6 +6,10 @@ import "./tab-bar.css";
 /** Phone bottom bar shared by the Eris chat page and the dashboard, so they feel like one app. */
 export type TabId = "chat" | "daily" | "overview" | "trends" | "settings";
 
+/** The view picked on the chat page, handed to the dashboard across an in-app navigation. */
+let rememberedView: Exclude<TabId, "chat"> | null = null;
+export function takeRememberedView() { const view = rememberedView; rememberedView = null; return view; }
+
 const TABS: { id: TabId; label: string; href: string }[] = [
   { id: "chat", label: "對話", href: "/chat" },
   { id: "daily", label: "每日", href: "/?view=daily" },
@@ -42,12 +46,13 @@ export function TabBar({ active, badge = 0, onSelect, className = "" }: { active
           <span className="tab-label">{tab.label}</span>
         </>;
         if (tab.id === "chat") return <Link key={tab.id} href={tab.href} prefetch {...props}>{content}</Link>;
-        // Dashboard views switch in place; from the chat page they load the dashboard fresh so it opens on that view.
-        return <a key={tab.id} href={tab.href} {...props} onClick={event => {
-          if (!onSelect) return;
-          event.preventDefault();
-          onSelect(tab.id as Exclude<TabId, "chat">);
-        }}>{content}</a>;
+        // Dashboard views switch in place. From the chat page they are in-app navigations (no reload, no
+        // sign-in check screen) that tell the dashboard which view to open.
+        const view = tab.id;
+        return <Link key={tab.id} href={tab.href} prefetch {...props} onClick={event => {
+          if (onSelect) { event.preventDefault(); onSelect(view); return; }
+          rememberedView = view;
+        }}>{content}</Link>;
       })}
     </nav>
   );
