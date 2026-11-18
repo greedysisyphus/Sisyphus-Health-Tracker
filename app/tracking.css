@@ -1,0 +1,19 @@
+/* "What to record" settings and the dashboard without a water card. */
+.tracking-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-md);box-shadow:var(--shadow-soft);padding:22px;margin-bottom:18px}
+.tracking-list{display:grid;margin:14px 0 6px;border-top:1px solid var(--line)}
+.tracking-row{display:flex!important;align-items:center;justify-content:space-between;gap:16px;padding:14px 2px;border-bottom:1px solid var(--line);cursor:pointer;color:var(--ink)!important}
+.tracking-row span,.focus-field span{display:grid;gap:3px;min-width:0}
+.tracking-row b,.focus-field b{font-size:15px;font-weight:600;color:var(--ink)}
+.tracking-row small,.focus-field small{font-size:12px;color:var(--muted);line-height:1.45}
+.switch{appearance:none;-webkit-appearance:none;flex:0 0 auto;width:51px;height:31px;border-radius:999px;background:#d9ddda;position:relative;cursor:pointer;transition:background-color .22s cubic-bezier(.2,.8,.2,1);margin:0}
+.switch::after{content:"";position:absolute;top:2px;left:2px;width:27px;height:27px;border-radius:50%;background:#fff;box-shadow:0 2px 6px rgba(0,0,0,.18);transition:transform .26s cubic-bezier(.34,1.4,.64,1)}
+.switch:checked{background:var(--sage-dark)}
+.switch:checked::after{transform:translateX(20px)}
+.switch:active::after{width:31px}
+.switch:checked:active::after{transform:translateX(16px)}
+.switch:focus-visible{outline:2px solid color-mix(in srgb,var(--sage-dark) 70%,white);outline-offset:2px}
+.focus-field{display:grid!important;gap:9px;margin-top:16px;color:var(--ink)!important}
+.focus-field input{width:100%;border:1px solid var(--line);border-radius:10px;padding:12px 13px;font-size:16px;background:#fff;color:var(--ink)}
+.macro-row.no-water{grid-template-columns:repeat(3,1fr)}
+@media (prefers-reduced-motion:reduce){.switch,.switch::after{transition:none}}
+@media(max-width:760px){.tracking-card{padding:18px 16px}}
