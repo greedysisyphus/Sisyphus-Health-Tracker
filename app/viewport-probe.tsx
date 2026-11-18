@@ -23,7 +23,7 @@ export function ViewportProbe() {
         `visual ${vv ? Math.round(vv.height) : "-"}  offset ${vv ? Math.round(vv.offsetTop) : "-"}`,
         heights.map(([unit, d]) => `${unit.slice(3)} ${Math.round(d.getBoundingClientRect().height)}`).join("  "),
         `safe top ${cs.paddingTop}  bottom ${cs.paddingBottom}`,
-        `bar ${bar ? `${Math.round(bar.top)}–${Math.round(bar.bottom)}` : "-"}`,
+        `app-vh ${getComputedStyle(document.documentElement).getPropertyValue("--app-vh")}  bar ${bar ? `${Math.round(bar.top)}–${Math.round(bar.bottom)}` : "-"}`,
       ]);
     };
     read();
