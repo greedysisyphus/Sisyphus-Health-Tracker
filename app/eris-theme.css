@@ -35,7 +35,7 @@ html:has(:is(.app-shell,.setup)),body:has(:is(.app-shell,.setup)){background:#f6
    toolbar on scrolling tabs but not on the chat, and the fixed tab bar sits at a different height per tab. */
 @media(max-width:760px){
   html:has(.app-shell),body:has(.app-shell){height:100%;overflow:hidden}
-  .app-shell .content{position:fixed;inset:0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+  .app-shell .content{position:fixed;left:0;right:0;top:var(--app-vt,0px);height:var(--app-vh,100dvh);overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
 }
 @media(max-width:760px){
   .app-shell .mobile-topbar{position:sticky;top:0;z-index:15;margin:-18px -16px 20px;padding:calc(env(safe-area-inset-top) + 10px) 16px 10px;

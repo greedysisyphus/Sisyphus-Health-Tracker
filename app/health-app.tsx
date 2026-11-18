@@ -2,7 +2,7 @@
 
 import { onAuthStateChanged, signInWithPopup, signOut, type User } from "firebase/auth";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { auth, db, googleProvider, hasFirebaseConfig } from "../lib/firebase";
+import { auth, googleProvider, hasFirebaseConfig } from "../lib/firebase";
 import { TabBar } from "./tab-bar";
 import { ChatView } from "./chat/chat-view";
 import { ViewportProbe } from "./viewport-probe";
@@ -67,6 +67,22 @@ export function HealthApp({ initialView = "daily" }: { initialView?: View }) {
     if (next !== "chat") { document.querySelector(".app-shell .content")?.scrollTo({ top: 0 }); window.scrollTo({ top: 0 }); }
   };
   const [chatBusy, setChatBusy] = useState(0);
+  // Size the app to the part of the screen that is actually visible. iOS Safari changes it when the keyboard
+  // opens and when it hides or shows its own toolbar; the tab bar, chat and tab pages all follow it.
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    const root = document.documentElement;
+    const apply = () => {
+      root.style.setProperty("--app-vh", `${viewport.height}px`);
+      root.style.setProperty("--app-vt", `${viewport.offsetTop}px`);
+    };
+    apply();
+    viewport.addEventListener("resize", apply);
+    viewport.addEventListener("scroll", apply);
+    window.addEventListener("resize", apply);
+    return () => { viewport.removeEventListener("resize", apply); viewport.removeEventListener("scroll", apply); window.removeEventListener("resize", apply); };
+  }, []);
   const [history, setHistory] = useState<DailyOverview[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState("");
