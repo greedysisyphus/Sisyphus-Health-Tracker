@@ -1,5 +1,4 @@
 import type { Metadata, Viewport } from "next";
-import "./chat.css";
 
 export const metadata: Metadata = {
   title: "Eris｜日常營養",
@@ -12,6 +11,7 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  maximumScale: 1,
   viewportFit: "cover",
   interactiveWidget: "resizes-content",
   themeColor: [

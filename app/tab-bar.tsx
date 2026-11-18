@@ -1,14 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import "./tab-bar.css";
 
 /** Phone bottom bar shared by the Eris chat page and the dashboard, so they feel like one app. */
 export type TabId = "chat" | "daily" | "overview" | "trends" | "settings";
-
-/** The view picked on the chat page, handed to the dashboard across an in-app navigation. */
-let rememberedView: Exclude<TabId, "chat"> | null = null;
-export function takeRememberedView() { const view = rememberedView; rememberedView = null; return view; }
 
 const TABS: { id: TabId; label: string; href: string }[] = [
   { id: "chat", label: "對話", href: "/chat" },
@@ -27,11 +22,8 @@ function TabIcon({ id }: { id: TabId }) {
   return <svg viewBox="0 0 24 24" aria-hidden="true" {...common}><path d="M4 8h16M4 16h16" /><circle cx="15" cy="8" r="2.2" fill="var(--tab-bg)" /><circle cx="9" cy="16" r="2.2" fill="var(--tab-bg)" /></svg>;
 }
 
-/**
- * `onSelect` lets the dashboard switch views in place; without it (chat page) every tab is a link.
- * The chat tab is always a link because chat is its own page.
- */
-export function TabBar({ active, badge = 0, onSelect, className = "" }: { active: TabId | null; badge?: number; onSelect?: (id: Exclude<TabId, "chat">) => void; className?: string }) {
+/** One bar for the whole app: every tab switches in place (the links only matter without JavaScript). */
+export function TabBar({ active, badge = 0, onSelect, className = "" }: { active: TabId | null; badge?: number; onSelect: (id: TabId) => void; className?: string }) {
   const index = active ? TABS.findIndex(tab => tab.id === active) : -1;
   return (
     <nav className={`tab-bar ${className}`} aria-label="主要功能" style={{ "--tab-index": Math.max(index, 0), "--tab-count": TABS.length } as React.CSSProperties}>
@@ -45,14 +37,7 @@ export function TabBar({ active, badge = 0, onSelect, className = "" }: { active
           </span>
           <span className="tab-label">{tab.label}</span>
         </>;
-        if (tab.id === "chat") return <Link key={tab.id} href={tab.href} prefetch {...props}>{content}</Link>;
-        // Dashboard views switch in place. From the chat page they are in-app navigations (no reload, no
-        // sign-in check screen) that tell the dashboard which view to open.
-        const view = tab.id;
-        return <Link key={tab.id} href={tab.href} prefetch {...props} onClick={event => {
-          if (onSelect) { event.preventDefault(); onSelect(view); return; }
-          rememberedView = view;
-        }}>{content}</Link>;
+        return <a key={tab.id} href={tab.href} {...props} onClick={event => { event.preventDefault(); onSelect(tab.id); }}>{content}</a>;
       })}
     </nav>
   );
