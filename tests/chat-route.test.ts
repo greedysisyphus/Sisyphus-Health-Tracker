@@ -96,7 +96,9 @@ describe("dashboard chat route", () => {
     expect(headers.Authorization).toBe(`Bearer ${CHAT_KEY}`);
     expect(headers["Idempotency-Key"]).toBe("dashboard-chat-msg_00000001");
     const body = JSON.parse(String(init.body));
-    expect(body.input[0].content.filter((part: { type: string }) => part.type === "input_image")).toHaveLength(3);
+    const images = body.input[0].content.filter((part: { type: string }) => part.type === "input_image");
+    expect(images).toHaveLength(3);
+    expect(images.every((part: { detail?: string }) => part.detail === "high")).toBe(true);
     expect(body.instructions).toContain('eventId 用 "msg_00000001"');
     expect(body.instructions).toContain('source 用 "dashboard"');
     // Never the bare date: two profiles sharing a session id leaked one person's chat into the other's.

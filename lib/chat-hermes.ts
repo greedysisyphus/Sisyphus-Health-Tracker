@@ -74,7 +74,8 @@ export function runRequestBody(message: ChatSend, session: string, now = new Dat
       role: "user",
       content: [
         { type: "input_text", text },
-        ...message.photos.map(url => ({ type: "input_image", image_url: url })),
+        // "high": the AI looks at the full-resolution photo, so label print is legible.
+        ...message.photos.map(url => ({ type: "input_image", image_url: url, detail: "high" })),
       ],
     }],
     instructions: runInstructions(message.id, now, extra),
