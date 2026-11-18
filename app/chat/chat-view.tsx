@@ -7,6 +7,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { db } from "../../lib/firebase";
 import { fitPhotos, newMessageId, outbox, preparePhoto, type OutboxItem } from "../../lib/chat-client";
 import "./chat.css";
+import { ErisMascot, type MascotState } from "./eris-mascot";
 
 type ServerStatus = "sending" | "retry" | "processing" | "done" | "failed";
 type ChatDoc = { id: string; text: string; thumbs: string[]; photoCount: number; status: ServerStatus; reply: string | null; createdAt: number };
@@ -67,6 +68,11 @@ export function ChatView({ user, demo, active, onWorkingChange }: { user: User; 
   const stickToBottom = useRef(true);
   /** Only messages that arrive while the page is open get an entrance animation. */
   const [openedAt] = useState(() => Date.now() - 1500);
+  /** Bumped when a reply arrives: Eris nods and looks happy for a moment. */
+  const [replyBeat, setReplyBeat] = useState(0);
+  const [celebrating, setCelebrating] = useState(false);
+  const doneCount = useRef<number | null>(null);
+  useEffect(() => { if (!replyBeat) return; const timer = setTimeout(() => setCelebrating(false), 3500); return () => clearTimeout(timer); }, [replyBeat]);
   const [demoRows, setDemoRows] = useState<ChatDoc[]>(() => DEMO_ALLOWED ? demoDocs() : []);
 
   const say = useCallback((message: string, tone: "ok" | "warn" = "ok") => setToast({ key: Date.now(), text: message, tone }), []);
@@ -92,6 +98,9 @@ export function ChatView({ user, demo, active, onWorkingChange }: { user: User; 
     if (demo || !db) return;
     const messages = query(collection(db, `users/${user.uid}/chatMessages`), orderBy("createdAt", "desc"), limit(60));
     return onSnapshot(messages, snapshot => {
+      const done = snapshot.docs.filter(doc => doc.get("status") === "done").length;
+      if (doneCount.current !== null && done > doneCount.current) { setReplyBeat(Date.now()); setCelebrating(true); }
+      doneCount.current = done;
       setDocs(snapshot.docs.map(doc => {
         const data = doc.data();
         const created = (data.createdAt as Timestamp | null)?.toMillis?.() ?? Date.now();
@@ -115,7 +124,7 @@ export function ChatView({ user, demo, active, onWorkingChange }: { user: User; 
         setDemoRows(list => [...list, { id: item.id, text: item.text, thumbs: item.thumbs, photoCount: item.thumbs.length, status: "processing", reply: null, createdAt: item.createdAt }]);
         say("已送出，可以關掉 App 了");
       }, 900);
-      setTimeout(() => setDemoRows(list => list.map(entry => entry.id === item.id ? { ...entry, status: "done", reply: "（示範）記好了，今天累計 1,020 大卡。" } : entry)), 4200);
+      setTimeout(() => { setDemoRows(list => list.map(entry => entry.id === item.id ? { ...entry, status: "done", reply: "（示範）記好了，今天累計 1,020 大卡。" } : entry)); setReplyBeat(Date.now()); setCelebrating(true); }, 4200);
       return;
     }
     if (inFlight.current.has(item.id)) return;
@@ -180,6 +189,8 @@ export function ChatView({ user, demo, active, onWorkingChange }: { user: User; 
   }, [docs, pending, demo, demoRows]);
 
   const working = rows.filter(row => row.doc?.status === "processing").length;
+  const sendingNow = rows.some(row => row.local && !row.local.failed);
+  const mood: MascotState = celebrating ? "happy" : working || sendingNow ? "think" : typing && active ? "focus" : "idle";
   useEffect(() => { onWorkingChange(working); }, [working, onWorkingChange]);
 
   const scrolledOnce = useRef(false);
@@ -256,7 +267,7 @@ export function ChatView({ user, demo, active, onWorkingChange }: { user: User; 
   return (
     <section className={`chat-app${typing && active ? " is-typing" : ""}`} hidden={!active} aria-label="和 Eris 對話">
       <header className="chat-head">
-        <div className="chat-avatar"><img src="/eris-96.png" alt="" /><i className={working ? "busy" : ""} /></div>
+        <div className="chat-avatar"><ErisMascot size={42} state={mood} poke="nod" pokeKey={replyBeat} /><i className={working ? "busy" : ""} /></div>
         <div className="chat-title">
           <strong>Eris</strong>
           <span key={working ? "busy" : "idle"}>{working ? `正在記錄 ${working} 則…` : "傳照片或打字，我幫你記"}</span>
@@ -266,7 +277,7 @@ export function ChatView({ user, demo, active, onWorkingChange }: { user: User; 
       <div className="chat-list" ref={listRef} onScroll={onScroll}>
         {rows.length === 0 && (
           <section className="chat-empty">
-            <img src="/eris-180.png" alt="" />
+            <ErisMascot size={92} state={mood} />
             <h2>{greeting()}！今天吃了什麼？</h2>
             <p>可以一次傳好幾張照片：餐點、包裝正面、營養標示都可以。傳完就能關掉 App，我會自己記好。</p>
             <div className="chat-suggest">
