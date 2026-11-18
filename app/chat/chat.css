@@ -57,6 +57,9 @@ html:has(.chat-app),body:has(.chat-app){background:#f6f4ef;overscroll-behavior:n
 .chip .chat-spinner{width:11px;height:11px;border-width:1.6px}
 .bubble.typing{display:flex;gap:5px;padding:14px 16px;width:max-content}
 .eris-working{display:grid;gap:6px}
+/* The wait hint sits under the bubble: keep the avatar level with the bubble, not the hint. */
+.msg.eris:has(.eris-working){align-items:flex-start}
+.msg.eris:has(.eris-working) .msg-avatar{margin-top:8px}
 .eris-working small{font-size:11.5px;color:var(--c-muted);padding-left:4px;opacity:0;animation:chat-fade-up .4s 6s var(--ease-out) forwards}
 .bubble.typing i{width:7px;height:7px;border-radius:50%;background:var(--c-muted);animation:chat-dot 1.2s ease-in-out infinite}
 .bubble.typing i:nth-child(2){animation-delay:.15s}.bubble.typing i:nth-child(3){animation-delay:.3s}

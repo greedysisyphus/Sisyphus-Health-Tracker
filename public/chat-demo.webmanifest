@@ -1,7 +1,7 @@
 {
   "name": "Eris Health 測試",
   "short_name": "Eris 測試",
-  "start_url": "/chat?demo",
+  "start_url": "/chat?demo&probe",
   "scope": "/",
   "display": "standalone",
   "background_color": "#0f1115",
