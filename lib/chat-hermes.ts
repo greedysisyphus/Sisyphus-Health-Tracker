@@ -83,18 +83,47 @@ export function runRequestBody(message: ChatSend, now = new Date(), extra: strin
 
 type FetchLike = typeof fetch;
 
-export async function startRun(target: ChatTarget, message: ChatSend, fetcher: FetchLike = fetch, now = new Date(), extra: string[] = []) {
-  const response = await fetcher(`${target.url}/v1/runs`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${target.key}`, "Content-Type": "application/json", "Idempotency-Key": `dashboard-chat-${message.id}` },
-    body: JSON.stringify(runRequestBody(message, now, extra)),
-    signal: AbortSignal.timeout(20_000),
-  });
-  const body = await response.json().catch(() => ({})) as { run_id?: unknown; error?: { code?: unknown } };
-  if (!response.ok || typeof body.run_id !== "string") {
-    throw new Error(`hermes_run_rejected:${response.status}:${String(body.error?.code ?? "")}`);
+/** Network-level failure ("fetch failed", timeouts) with the underlying reason, e.g. "fetch failed (ECONNRESET)". */
+export function describeFetchError(error: unknown): string {
+  if (!(error instanceof Error)) return "hermes_unreachable";
+  const cause = (error as Error & { cause?: { code?: unknown; message?: unknown } }).cause;
+  const detail = cause?.code ?? cause?.message ?? (error.name === "TimeoutError" ? "timeout" : "");
+  return detail ? `${error.message} (${String(detail)})` : error.message;
+}
+
+class RunRejected extends Error {}
+
+const RETRY_DELAYS_MS = [1_000, 3_000];
+/** Tests set CHAT_RETRY_DELAYS_MS="0,0" to skip the waits. */
+const retryDelays = () => process.env.CHAT_RETRY_DELAYS_MS?.split(",").map(Number) ?? RETRY_DELAYS_MS;
+
+/**
+ * Starts the Hermes run. A dropped connection is retried twice (1s, 3s) with the same Idempotency-Key and the same
+ * body, so a retry can only ever reach the same run; an answer from Hermes (e.g. 401, 409) is final.
+ */
+export async function startRun(target: ChatTarget, message: ChatSend, fetcher: FetchLike = fetch, now = new Date(), extra: string[] = [], delays: number[] = retryDelays()) {
+  const body = JSON.stringify(runRequestBody(message, now, extra));
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= delays.length; attempt += 1) {
+    if (attempt > 0) await new Promise(resolve => setTimeout(resolve, delays[attempt - 1]));
+    try {
+      const response = await fetcher(`${target.url}/v1/runs`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${target.key}`, "Content-Type": "application/json", "Idempotency-Key": `dashboard-chat-${message.id}` },
+        body,
+        signal: AbortSignal.timeout(12_000),
+      });
+      const result = await response.json().catch(() => ({})) as { run_id?: unknown; error?: { code?: unknown } };
+      if (!response.ok || typeof result.run_id !== "string") {
+        throw new RunRejected(`hermes_run_rejected:${response.status}:${String(result.error?.code ?? "")}`);
+      }
+      return result.run_id;
+    } catch (error) {
+      if (error instanceof RunRejected) throw error;
+      lastError = error;
+    }
   }
-  return body.run_id;
+  throw new Error(describeFetchError(lastError));
 }
 
 export type RunOutcome =

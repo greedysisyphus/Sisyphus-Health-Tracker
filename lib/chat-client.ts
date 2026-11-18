@@ -2,7 +2,7 @@
 
 /** Browser-only helpers for the chat page: photo shrinking and a send outbox that survives the app closing. */
 
-export type OutboxItem = { id: string; text: string; photos: string[]; thumbs: string[]; createdAt: number; failed?: boolean };
+export type OutboxItem = { id: string; text: string; photos: string[]; thumbs: string[]; createdAt: number; failed?: boolean; attempts?: number };
 
 const PHOTO_EDGE = 1280;
 const THUMB_EDGE = 320;

@@ -29,6 +29,15 @@ let probeFlag: boolean | undefined;
 const readProbeFlag = () => (probeFlag ??= DEMO_ALLOWED && new URLSearchParams(window.location.search).has("probe"));
 const readDemoFlag = () => (demoFlag ??= DEMO_ALLOWED && new URLSearchParams(window.location.search).has("demo"));
 const DEMO_USER = { uid: "demo", displayName: "Demo", email: "demo@example.com" } as unknown as User;
+const demoEntry = (id: string, name: string, servings: number, n: Partial<Nutrition>, extra: Partial<FoodEntry> = {}): FoodEntry => ({
+  ...emptyNutrition(), ...n, id, name, brand: null, category: null, mealType: "其他", servings, consumedPercent: 100, servingWeightG: null,
+  hydrationMl: 0, time: "現在", notes: null, source: "ai_estimated", confidence: "medium", ...extra,
+});
+const demoEntries = (): FoodEntry[] => [
+  demoEntry("e1", "香蕉", 1, { caloriesKcal: 100, proteinG: 1, carbsG: 26, fatG: 0.3 }),
+  demoEntry("e2", "八方雲集清燉牛肉麵", 1, { caloriesKcal: 550, proteinG: 36, carbsG: 65, fatG: 16 }, { brand: "八方雲集" }),
+  demoEntry("e3", "飯糰", 0.26666666667, { caloriesKcal: 1009, proteinG: 45, carbsG: 175, fatG: 14 }, { source: "nutrition_label", confidence: "high" }),
+];
 type EditorState = FoodEntry | null | undefined;
 type AnalysisTexts = Partial<Record<1 | 3 | 7, string>>;
 type TargetRange = { min: number; max: number };
@@ -53,7 +62,7 @@ export function HealthApp({ initialView = "daily" }: { initialView?: View }) {
   const demo = useSyncExternalStore(noopSubscribe, readDemoFlag, () => false);
   const probe = useSyncExternalStore(noopSubscribe, readProbeFlag, () => false);
   const [date, setDate] = useState(() => formatLocalDate(new Date()));
-  const [entries, setEntries] = useState<FoodEntry[]>([]);
+  const [entries, setEntries] = useState<FoodEntry[]>(() => DEMO_ALLOWED && typeof window !== "undefined" && readDemoFlag() ? demoEntries() : []);
   const [waterMl, setWaterMl] = useState(0);
   const [weightKg, setWeightKg] = useState<number | undefined>();
   const [steps, setSteps] = useState<number | undefined>();
@@ -418,9 +427,11 @@ function DailyGuidance({ totals, waterMl, entries, weightKg }: { totals: Nutriti
   if (tracking.weight && weightKg === undefined) reminders.push("尚未登記今天體重。");
   return reminders.length ? <details className="daily-guidance"><summary>今日提醒 <small>{reminders.length}</small></summary><ul>{reminders.slice(0, 3).map(reminder => <li key={reminder}>{reminder}</li>)}</ul></details> : null;
 }
+/** 0.26666666667 → "0.27"; whole numbers stay whole. */
+const formatServings = (servings: number) => Number.isInteger(servings) ? String(servings) : String(Math.round(servings * 100) / 100);
 function EntryList({ entries, edit, remove, saveAsCommon }: { entries: FoodEntry[]; edit: (entry: FoodEntry) => void; remove: (id: string) => Promise<void>; saveAsCommon: (entry: FoodEntry) => Promise<void> }) {
   const groups = meals.map(meal => ({ meal, entries: entries.filter(entry => entry.mealType === meal) })).filter(group => group.entries.length);
-  const renderEntry = (entry: FoodEntry) => { const total = totalForEntry(entry); return <article className="entry" key={entry.id}><div className="food-icon"><FoodMark /></div><div><b>{entry.name}</b><p>{entry.time !== "現在" ? `${entry.time} · ` : ""}{entry.servings} 份{entry.brand ? ` · ${entry.brand}` : ""}</p><EntrySourceBadge entry={entry} /></div><div className="entry-nutrition"><b>{Math.round(total.caloriesKcal)} <small>kcal</small></b><span>P {formatNutrition(total.proteinG, "g")}　C {formatNutrition(total.carbsG, "g")}　F {formatNutrition(total.fatG, "g")}</span></div><div className="entry-actions"><button onClick={() => void saveAsCommon(entry)}>常用</button><button onClick={() => edit(entry)}>編輯</button><button onClick={() => void remove(entry.id)}>刪除</button></div></article>; };
+  const renderEntry = (entry: FoodEntry) => { const total = totalForEntry(entry); return <article className="entry" key={entry.id}><div className="food-icon"><FoodMark /></div><div><b>{entry.name}</b><p>{entry.time !== "現在" ? `${entry.time} · ` : ""}{formatServings(entry.servings)} 份{entry.brand ? ` · ${entry.brand}` : ""}</p><EntrySourceBadge entry={entry} /></div><div className="entry-nutrition"><b>{Math.round(total.caloriesKcal)} <small>kcal</small></b><span>P {formatNutrition(total.proteinG, "g")}　C {formatNutrition(total.carbsG, "g")}　F {formatNutrition(total.fatG, "g")}</span></div><div className="entry-actions"><button onClick={() => void saveAsCommon(entry)}>常用</button><button onClick={() => edit(entry)}>編輯</button><button onClick={() => void remove(entry.id)}>刪除</button></div></article>; };
   return <section className="entry-list">{entries.length ? groups.map(group => <section className="meal-group" key={group.meal}><div className="meal-group-heading"><span>{group.meal}</span><small>{group.entries.length} 項</small></div>{group.entries.map(renderEntry)}</section>) : <p className="empty">今天還沒有飲食紀錄。可直接新增一筆，或傳訊息給 Hermes。</p>}</section>;
 }
 function Overview({ history, loading, error, retry, openDate, exportData }: { history: DailyOverview[]; loading: boolean; error: string; retry: () => void; openDate: (date: string) => void; exportData: () => void }) {
