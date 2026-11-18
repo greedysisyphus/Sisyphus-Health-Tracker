@@ -4,7 +4,12 @@
 
 export type OutboxItem = { id: string; text: string; photos: string[]; thumbs: string[]; createdAt: number; failed?: boolean; attempts?: number };
 
-const PHOTO_EDGE = 1280;
+/** Big enough that the small print on a nutrition label stays readable for the AI. */
+const PHOTO_EDGE = 2048;
+/** The server accepts up to 3,000,000 characters per photo; stay under it. */
+const MAX_PHOTO_CHARS = 2_600_000;
+/** Steps down only when a request with several photos would be too large. */
+const FIT_STEPS = [[1600, 0.78], [1280, 0.72], [960, 0.6]] as const;
 const THUMB_EDGE = 320;
 /** Keep each history thumbnail small: detailed photos get re-encoded at lower quality. */
 const THUMB_TARGET_CHARS = 50_000;
@@ -44,7 +49,7 @@ function draw(source: CanvasImageSource, width: number, height: number, edge: nu
 }
 
 /** One picked photo → an upload-sized JPEG plus a small thumbnail for the chat history. */
-export async function preparePhoto(file: Blob, quality = 0.74) {
+export async function preparePhoto(file: Blob, quality = 0.82) {
   const image = await decode(file);
   try {
     let thumb = draw(image.source, image.width, image.height, THUMB_EDGE, 0.6);
@@ -52,25 +57,28 @@ export async function preparePhoto(file: Blob, quality = 0.74) {
       if (thumb.length <= THUMB_TARGET_CHARS) break;
       thumb = draw(image.source, image.width, image.height, edge, q);
     }
-    return { photo: draw(image.source, image.width, image.height, PHOTO_EDGE, quality), thumb };
+    let photo = draw(image.source, image.width, image.height, PHOTO_EDGE, quality);
+    if (photo.length > MAX_PHOTO_CHARS) photo = draw(image.source, image.width, image.height, FIT_STEPS[0][0], FIT_STEPS[0][1]);
+    return { photo, thumb };
   } finally {
     image.close();
   }
 }
 
-/** Shrinks photos further when many large ones would not fit in one request. */
+/** Shrinks photos step by step (1600 → 1280 → 960 px) only when many large ones would not fit in one request. */
 export async function fitPhotos(photos: string[]) {
-  let total = photos.reduce((sum, photo) => sum + photo.length, 0);
-  if (total <= MAX_BODY_CHARS) return photos;
-  const shrunk: string[] = [];
-  for (const photo of photos) {
-    const blob = await (await fetch(photo)).blob();
-    const image = await decode(blob);
-    try { shrunk.push(draw(image.source, image.width, image.height, 960, 0.6)); } finally { image.close(); }
+  const size = (list: string[]) => list.reduce((sum, photo) => sum + photo.length, 0);
+  if (size(photos) <= MAX_BODY_CHARS) return photos;
+  const images = await Promise.all(photos.map(async photo => decode(await (await fetch(photo)).blob())));
+  try {
+    for (const [edge, quality] of FIT_STEPS) {
+      const shrunk = images.map(image => draw(image.source, image.width, image.height, edge, quality));
+      if (size(shrunk) <= MAX_BODY_CHARS) return shrunk;
+    }
+  } finally {
+    for (const image of images) image.close();
   }
-  total = shrunk.reduce((sum, photo) => sum + photo.length, 0);
-  if (total > MAX_BODY_CHARS) throw new Error("photos_too_large");
-  return shrunk;
+  throw new Error("photos_too_large");
 }
 
 const DB_NAME = "eris-chat";

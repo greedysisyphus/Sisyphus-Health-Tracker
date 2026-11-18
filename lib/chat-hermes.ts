@@ -9,7 +9,8 @@ import { z } from "zod";
  * run is admitted and a retry never logs the same meal twice.
  */
 
-export type ChatTarget = { url: string; key: string };
+/** `session` keeps each person's Hermes session apart: two profiles must never share a session id. */
+export type ChatTarget = { url: string; key: string; session: string };
 
 const MESSAGE_ID = /^[A-Za-z0-9_-]{8,64}$/;
 const JPEG_DATA_URL = /^data:image\/jpeg;base64,[A-Za-z0-9+/]+=*$/;
@@ -31,14 +32,14 @@ export type ChatSend = z.infer<typeof chatSendSchema>;
 
 /** Which Hermes profile serves this Firebase user, or null when chat is not set up for them. */
 export function resolveChatTarget(uid: string, env: NodeJS.ProcessEnv = process.env): ChatTarget | null {
-  const candidates: Array<[string | undefined, string | undefined, string | undefined]> = [
-    [env.HEALTH_TRACKER_SECONDARY_OWNER_ID, env.HERMES_SECONDARY_CHAT_URL, env.HERMES_SECONDARY_CHAT_KEY],
-    [env.HEALTH_TRACKER_OWNER_ID, env.HERMES_CHAT_URL, env.HERMES_CHAT_KEY],
+  const candidates: Array<[string, string | undefined, string | undefined, string | undefined]> = [
+    ["secondary", env.HEALTH_TRACKER_SECONDARY_OWNER_ID, env.HERMES_SECONDARY_CHAT_URL, env.HERMES_SECONDARY_CHAT_KEY],
+    ["owner", env.HEALTH_TRACKER_OWNER_ID, env.HERMES_CHAT_URL, env.HERMES_CHAT_KEY],
   ];
-  for (const [owner, url, key] of candidates) {
+  for (const [session, owner, url, key] of candidates) {
     if (!owner || owner !== uid || !url || !key || key.length < 32) continue;
     if (!/^https:\/\/[^\s]+$/.test(url) && !/^http:\/\/127\.0\.0\.1(:\d+)?\//.test(url)) continue;
-    return { url: url.replace(/\/+$/, ""), key };
+    return { url: url.replace(/\/+$/, ""), key, session };
   }
   return null;
 }
@@ -66,18 +67,19 @@ export function runInstructions(messageId: string, now = new Date(), extra: stri
   ].join("\n");
 }
 
-export function runRequestBody(message: ChatSend, now = new Date(), extra: string[] = []) {
+export function runRequestBody(message: ChatSend, session: string, now = new Date(), extra: string[] = []) {
   const text = message.text.trim() || (message.photos.length > 1 ? `（${message.photos.length} 張照片）` : "（照片）");
   return {
     input: [{
       role: "user",
       content: [
         { type: "input_text", text },
-        ...message.photos.map(url => ({ type: "input_image", image_url: url })),
+        // "high": the AI looks at the full-resolution photo, so label print is legible.
+        ...message.photos.map(url => ({ type: "input_image", image_url: url, detail: "high" })),
       ],
     }],
     instructions: runInstructions(message.id, now, extra),
-    session_id: `dashboard-${taipeiNow(now).date}`,
+    session_id: `dashboard-${session}-${taipeiNow(now).date}`,
   };
 }
 
@@ -102,7 +104,7 @@ const retryDelays = () => process.env.CHAT_RETRY_DELAYS_MS?.split(",").map(Numbe
  * body, so a retry can only ever reach the same run; an answer from Hermes (e.g. 401, 409) is final.
  */
 export async function startRun(target: ChatTarget, message: ChatSend, fetcher: FetchLike = fetch, now = new Date(), extra: string[] = [], delays: number[] = retryDelays()) {
-  const body = JSON.stringify(runRequestBody(message, now, extra));
+  const body = JSON.stringify(runRequestBody(message, target.session, now, extra));
   let lastError: unknown;
   for (let attempt = 0; attempt <= delays.length; attempt += 1) {
     if (attempt > 0) await new Promise(resolve => setTimeout(resolve, delays[attempt - 1]));
