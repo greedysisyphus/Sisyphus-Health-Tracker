@@ -1,10 +1,10 @@
 import type { Metadata, Viewport } from "next";
 
 export const metadata: Metadata = {
-  title: "Eris｜日常營養",
-  description: "傳照片或打字，Eris 幫你記進日常營養。",
+  title: "Eris Health",
+  description: "傳照片或打字，Eris 幫你記錄飲食與健康。",
   manifest: "/chat.webmanifest",
-  appleWebApp: { capable: true, title: "Eris", statusBarStyle: "black-translucent" },
+  appleWebApp: { capable: true, title: "Eris Health", statusBarStyle: "black-translucent" },
   icons: { apple: "/eris-180.png", icon: "/eris-96.png" },
 };
 

@@ -14,13 +14,29 @@ html:has(:is(.app-shell,.setup)),body:has(:is(.app-shell,.setup)){background:#f6
 .app-shell .content{background:transparent}
 .app-shell.app-shell :is(h1,h2,h3){font-family:inherit;letter-spacing:-.3px}
 .app-shell h1{font-weight:700}
-.app-shell .hero-card{background:linear-gradient(135deg,#27529b 0%,#3a6fc2 55%,#6d98dc 100%);box-shadow:0 16px 36px rgba(52,101,178,.28)}
-.app-shell .hero-card .meter i{background:#fff}
+/* Calorie card: a panel like every other card (no saturated block); the number carries the weight and
+   the bar uses Eris blue, turning coral when over the range. */
+.app-shell .hero-card{background:var(--e-panel);color:var(--ink);border:1px solid var(--line);box-shadow:var(--shadow-soft)}
+.app-shell .hero-card :is(p,span,small){color:var(--muted)}
+.app-shell .hero-card .calorie strong,.app-shell .hero-card .weight strong{color:var(--ink)}
+.app-shell .hero-card .meter{background:var(--ring-track)}
+.app-shell .hero-card .meter i{background:var(--sage-dark)}
+.app-shell .hero-card .remaining{color:var(--sage-dark)!important}
+.app-shell .hero-card .over{color:var(--coral)!important}
+.app-shell .hero-card:has(.over) .meter i{background:var(--coral)}
+.app-shell .hero-card .weight{border-color:var(--line)}
+.app-shell .hero-card .weight em{color:var(--muted)}
 .app-shell .brand i{background:var(--sage-dark);font-family:inherit;font-weight:700}
 .app-shell :is(input,select,textarea){color:var(--ink);color-scheme:inherit}
 .app-shell [hidden]{display:none!important}
 /* iPhone zooms into any field under 16px and stays zoomed: keep every field at 16px on phones. */
 @media(max-width:760px){.app-shell :is(input,select,textarea){font-size:16px!important}}
+/* Phones: the page itself never scrolls; each tab scrolls inside the app. Otherwise Safari collapses its
+   toolbar on scrolling tabs but not on the chat, and the fixed tab bar sits at a different height per tab. */
+@media(max-width:760px){
+  html:has(.app-shell),body:has(.app-shell){height:100%;overflow:hidden}
+  .app-shell .content{position:fixed;inset:0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+}
 @media(max-width:760px){
   .app-shell .mobile-topbar{position:sticky;top:0;z-index:15;margin:-18px -16px 20px;padding:calc(env(safe-area-inset-top) + 10px) 16px 10px;
     background:color-mix(in srgb,var(--e-bg) 82%,transparent);backdrop-filter:saturate(1.4) blur(18px);-webkit-backdrop-filter:saturate(1.4) blur(18px);border-bottom:1px solid var(--line)}
@@ -150,3 +166,9 @@ html:has(:is(.app-shell,.setup)),body:has(:is(.app-shell,.setup)){background:#f6
 @keyframes splash-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
 @keyframes splash-dot{0%,60%,100%{transform:translateY(0);opacity:.45}30%{transform:translateY(-4px);opacity:1}}
 @media (prefers-reduced-motion:reduce){.app-splash img,.splash-dots i{animation:none}}
+
+/* Phones: no top bar (the tab bar is the navigation); sign-out lives at the end of 設定. */
+.settings-signout{display:block;width:100%;margin:22px 0 8px;padding:14px;border:1px solid var(--line);border-radius:var(--radius-md);background:transparent;color:var(--coral);font-size:15px;font-weight:600;cursor:pointer}
+@media(min-width:761px){.settings-signout{display:none}}
+@media(max-width:760px){.app-shell .content{padding-top:calc(env(safe-area-inset-top) + 18px)}}
+.app-shell .brand .brand-avatar{width:30px;height:30px;border-radius:50%;object-fit:cover}

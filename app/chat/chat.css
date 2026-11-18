@@ -141,3 +141,10 @@ html:has(.chat-app),body:has(.chat-app){background:#f6f4ef;overscroll-behavior:n
 }
 
 @media(max-width:760px){.chat-app{--tab-space:calc(env(safe-area-inset-bottom) + 84px)}.chat-app.is-typing{--tab-space:0px}}
+
+/* Animated Eris (public/mascot.js). The still picture shows until the rig has loaded. */
+.eris-mascot{position:relative;flex:0 0 auto;border-radius:50%;background:#0d0c0c url(/eris-96.png) center/cover no-repeat}
+.eris-mascot-stage{position:absolute;inset:0}
+.chat-avatar .eris-mascot{box-shadow:0 0 0 2px var(--c-panel)}
+.chat-avatar i{z-index:2}
+.chat-empty .eris-mascot{box-shadow:var(--c-shadow);background-image:url(/eris-180.png)}

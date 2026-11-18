@@ -17,7 +17,10 @@ const notoSansTc = Noto_Sans_TC({
 });
 
 export const metadata: Metadata = {
-  title: "日常營養｜減重與飲食紀錄",
+  title: "Eris Health",
+  manifest: "/chat.webmanifest",
+  appleWebApp: { capable: true, title: "Eris Health", statusBarStyle: "black-translucent" },
+  icons: { apple: "/eris-180.png", icon: "/eris-96.png" },
   description: "一個為日常飲食與減脂節奏打造的個人紀錄工具。",
 };
 
