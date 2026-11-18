@@ -31,11 +31,21 @@ html:has(:is(.app-shell,.setup)),body:has(:is(.app-shell,.setup)){background:#f6
 .app-shell [hidden]{display:none!important}
 /* iPhone zooms into any field under 16px and stays zoomed: keep every field at 16px on phones. */
 @media(max-width:760px){.app-shell :is(input,select,textarea){font-size:16px!important}}
+/* Full screen height, taken from Eris Bot (board/v2.html, measured on the same iPhone): in the home-screen app the
+   reported height (100%, dvh, innerHeight) can be 62pt short of the screen although the page paints all of it, and on
+   another launch the page sits below the status bar instead. min(100vh, 100dvh + top inset) is right in both. */
+:root{--full-h:100dvh}
+@media (display-mode:standalone){:root{--full-h:min(100vh,calc(100dvh + env(safe-area-inset-top)))}}
+/* While a text field has focus on a phone, size to the part above the keyboard (visual viewport + the same shortfall). */
+@media (max-width:760px) and (pointer:coarse){
+  .app-shell:has(:is(input:not([type=checkbox]):not([type=radio]),textarea,select):focus) .content{top:var(--app-vt,0px);height:calc(var(--app-vh,100dvh) + var(--full-h) - 100dvh)}
+}
 /* Phones: the page itself never scrolls; each tab scrolls inside the app. Otherwise Safari collapses its
    toolbar on scrolling tabs but not on the chat, and the fixed tab bar sits at a different height per tab. */
 @media(max-width:760px){
-  html:has(.app-shell),body:has(.app-shell){height:100%;overflow:hidden}
-  .app-shell .content{position:fixed;left:0;right:0;top:var(--app-vt,0px);height:var(--app-vh,100dvh);overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+  html:has(.app-shell),body:has(.app-shell){height:100%}
+  body:has(.app-shell){overflow:hidden}
+  .app-shell .content{position:fixed;left:0;right:0;top:0;height:var(--full-h);overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
 }
 @media(max-width:760px){
   .app-shell .mobile-topbar{position:sticky;top:0;z-index:15;margin:-18px -16px 20px;padding:calc(env(safe-area-inset-top) + 10px) 16px 10px;

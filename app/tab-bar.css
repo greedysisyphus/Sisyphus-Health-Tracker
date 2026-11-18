@@ -22,9 +22,9 @@
 @media (prefers-reduced-motion:reduce){.tab-indicator,.tab{transition:none}.tab.active .tab-icon svg,.tab-badge{animation:none}}
 
 /* Dashboard: fixed above the home indicator on phones, hidden on wide screens (the sidebar takes over). */
-/* Anchored to the bottom of the visible screen (--app-vt/--app-vh from HealthApp), not the layout viewport: when
-   Safari hides its toolbar the visible area grows and the bar follows it down instead of leaving a gap. */
-.dash-tab-bar{position:fixed;left:12px;right:12px;top:calc(var(--app-vt,0px) + var(--app-vh,100dvh) - 74px - env(safe-area-inset-bottom));z-index:20;display:none}
+/* Pinned to the screen bottom like Eris Bot's tab bar (fixed + bottom, not computed from the reported height,
+   which is short in the home-screen app); sits just above the home indicator. */
+.dash-tab-bar{position:fixed;left:12px;right:12px;bottom:max(8px,calc(env(safe-area-inset-bottom) - 14px));z-index:20;display:none}
 @media(max-width:760px){.dash-tab-bar{display:grid}}
 /* While typing in the chat the keyboard owns the bottom of the screen. */
 .app-shell:has(.chat-app.is-typing) .dash-tab-bar{display:none}
