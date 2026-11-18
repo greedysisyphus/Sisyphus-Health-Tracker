@@ -5,7 +5,9 @@
 export type OutboxItem = { id: string; text: string; photos: string[]; thumbs: string[]; createdAt: number; failed?: boolean };
 
 const PHOTO_EDGE = 1280;
-const THUMB_EDGE = 360;
+const THUMB_EDGE = 320;
+/** Keep each history thumbnail small: detailed photos get re-encoded at lower quality. */
+const THUMB_TARGET_CHARS = 50_000;
 /** Vercel rejects request bodies above ~4.5 MB; leave headroom for JSON and text. */
 export const MAX_BODY_CHARS = 4_000_000;
 
@@ -45,7 +47,12 @@ function draw(source: CanvasImageSource, width: number, height: number, edge: nu
 export async function preparePhoto(file: Blob, quality = 0.74) {
   const image = await decode(file);
   try {
-    return { photo: draw(image.source, image.width, image.height, PHOTO_EDGE, quality), thumb: draw(image.source, image.width, image.height, THUMB_EDGE, 0.62) };
+    let thumb = draw(image.source, image.width, image.height, THUMB_EDGE, 0.6);
+    for (const [edge, q] of [[THUMB_EDGE, 0.45], [240, 0.45], [200, 0.35]] as const) {
+      if (thumb.length <= THUMB_TARGET_CHARS) break;
+      thumb = draw(image.source, image.width, image.height, edge, q);
+    }
+    return { photo: draw(image.source, image.width, image.height, PHOTO_EDGE, quality), thumb };
   } finally {
     image.close();
   }

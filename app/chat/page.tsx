@@ -49,8 +49,9 @@ const demoDocs = (now = Date.now()): ChatDoc[] => [
 ];
 
 export default function ChatPage() {
-  const [user, setUser] = useState<User | null>(null);
-  const [authReady, setAuthReady] = useState(() => !auth);
+  // Coming from the dashboard the session is already restored, so open straight into the chat.
+  const [user, setUser] = useState<User | null>(() => auth?.currentUser ?? null);
+  const [authReady, setAuthReady] = useState(() => !auth || Boolean(auth.currentUser));
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [docs, setDocs] = useState<ChatDoc[]>([]);
   const [pending, setPending] = useState<OutboxItem[]>([]);
@@ -77,14 +78,21 @@ export default function ChatPage() {
     return onAuthStateChanged(auth, current => { setUser(current); setAuthReady(true); });
   }, []);
 
-  // Keep the composer above the iOS keyboard: size the app to the visible viewport.
+  // Keep the app inside the part of the screen the iOS keyboard leaves visible. Safari both shrinks
+  // and scrolls the visual viewport, so follow its height and its offset; hide the tabs while typing.
   useEffect(() => {
     const viewport = window.visualViewport;
     if (!viewport) return;
-    const apply = () => document.documentElement.style.setProperty("--chat-vh", `${viewport.height}px`);
+    const root = document.documentElement;
+    const apply = () => {
+      root.style.setProperty("--chat-vh", `${viewport.height}px`);
+      root.style.setProperty("--chat-vt", `${viewport.offsetTop}px`);
+      root.classList.toggle("chat-keyboard", viewport.height < window.innerHeight * 0.78);
+    };
     apply();
     viewport.addEventListener("resize", apply);
-    return () => viewport.removeEventListener("resize", apply);
+    viewport.addEventListener("scroll", apply);
+    return () => { viewport.removeEventListener("resize", apply); viewport.removeEventListener("scroll", apply); root.classList.remove("chat-keyboard"); };
   }, []);
 
   useEffect(() => {
@@ -135,7 +143,12 @@ export default function ChatPage() {
       if (response.status === 400 || response.status === 403) {
         await outbox.remove(item.id);
         setPending(list => list.filter(entry => entry.id !== item.id));
-        say(response.status === 403 ? "這個帳號還沒開通聊天" : "這則訊息格式不對，沒有送出", "warn");
+        if (response.status === 403) { say("這個帳號還沒開通聊天", "warn"); return; }
+        // Never lose what she typed or picked: put it back in the composer.
+        const reasons = ((await response.json().catch(() => ({}))) as { reasons?: string[] }).reasons ?? [];
+        setText(current => current || item.text);
+        setPhotos(current => current.length ? current : item.photos.map((photo, index) => ({ key: newMessageId(), photo, thumb: item.thumbs[index] ?? photo })));
+        say(reasons.some(reason => /photo|thumb/.test(reason)) ? "照片太大沒送出，已放回輸入框，少選幾張再送" : "沒送出，內容已放回輸入框，再按一次送出", "warn");
         return;
       }
       throw new Error(String(response.status));

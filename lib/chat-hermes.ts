@@ -14,8 +14,9 @@ export type ChatTarget = { url: string; key: string };
 const MESSAGE_ID = /^[A-Za-z0-9_-]{8,64}$/;
 const JPEG_DATA_URL = /^data:image\/jpeg;base64,[A-Za-z0-9+/]+=*$/;
 export const MAX_PHOTOS = 10;
-const MAX_PHOTO_CHARS = 1_400_000; // ~1 MB JPEG after base64
-const MAX_THUMB_CHARS = 40_000; // ~30 KB
+const MAX_PHOTO_CHARS = 3_000_000; // ~2.2 MB JPEG after base64; the phone keeps the whole request under ~4 MB
+const MAX_THUMB_CHARS = 120_000; // ~90 KB; the phone aims for well under this
+const MAX_THUMBS_TOTAL = 800_000; // thumbnails live in one Firestore document (1 MiB limit)
 
 export const chatSendSchema = z.object({
   id: z.string().regex(MESSAGE_ID),
@@ -23,7 +24,8 @@ export const chatSendSchema = z.object({
   photos: z.array(z.string().max(MAX_PHOTO_CHARS).regex(JPEG_DATA_URL)).max(MAX_PHOTOS).default([]),
   thumbs: z.array(z.string().max(MAX_THUMB_CHARS).regex(JPEG_DATA_URL)).max(MAX_PHOTOS).default([]),
 }).strict().refine(value => value.text.trim().length > 0 || value.photos.length > 0, { message: "empty_message" })
-  .refine(value => value.thumbs.length === value.photos.length, { message: "thumb_count_mismatch" });
+  .refine(value => value.thumbs.length === value.photos.length, { message: "thumb_count_mismatch" })
+  .refine(value => value.thumbs.reduce((sum, thumb) => sum + thumb.length, 0) <= MAX_THUMBS_TOTAL, { message: "thumbs_too_large" });
 
 export type ChatSend = z.infer<typeof chatSendSchema>;
 

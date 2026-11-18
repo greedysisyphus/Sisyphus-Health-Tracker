@@ -5,7 +5,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import Link from "next/link";
 import { auth, db, googleProvider, hasFirebaseConfig } from "../lib/firebase";
-import { TabBar } from "./tab-bar";
+import { TabBar, takeRememberedView } from "./tab-bar";
 import { calculateDailyNutrition, calculateHydrationSummary, calculateSevenDayAverage, categoryGroupOf, emptyNutrition, foodCategoryGroupLabel, foodCategoryGroups, formatLocalDate, formatNutrition, isDrinkCategory, meals, normalizeFoodCategory, parseNonNegativeNumber, totalForEntry, type FoodCategoryGroupId, type FoodEntry, type MealType, type Nutrition } from "../lib/nutrition";
 import { buildWeightTrendChart, collectWeightSamples } from "../lib/weight-trend";
 import "./tracking.css";
@@ -32,15 +32,16 @@ const rangeStatus = (value: number, target: TargetRange, unit: string) => value 
 const profileNumber = (profile: Record<string, unknown>, key: string, fallback: number) => typeof profile[key] === "number" && Number.isFinite(profile[key]) && profile[key] >= 0 ? profile[key] : fallback;
 
 export default function Home() {
-  const [user, setUser] = useState<User | null>(null);
+  // Arriving from the chat page, Firebase has already restored the session: start signed in, no check screen.
+  const [user, setUser] = useState<User | null>(() => auth?.currentUser ?? null);
   const [date, setDate] = useState(() => formatLocalDate(new Date()));
   const [entries, setEntries] = useState<FoodEntry[]>([]);
   const [waterMl, setWaterMl] = useState(0);
   const [weightKg, setWeightKg] = useState<number | undefined>();
   const [steps, setSteps] = useState<number | undefined>();
-  const [loading, setLoading] = useState(Boolean(auth));
+  const [loading, setLoading] = useState(() => Boolean(auth) && !auth?.currentUser);
   const [notice, setNotice] = useState("");
-  const [view, setView] = useState<View>("daily");
+  const [view, setView] = useState<View>(() => takeRememberedView() ?? "daily");
   /** Switch view and keep it in the address bar, so reopening the app returns to the same tab. */
   const selectView = (next: View) => { setView(next); window.history.replaceState(null, "", next === "daily" ? "/" : `/?view=${next}`); };
   const [chatBusy, setChatBusy] = useState(0);
@@ -281,7 +282,7 @@ export default function Home() {
   const refreshDaily = async () => { if (await loadDaily()) setNotice("已更新當日紀錄。"); };
 
   if (!hasFirebaseConfig) return <SetupScreen />;
-  if (loading && !user) return <main className="setup"><p className="eyebrow">日常營養</p><h1>正在確認登入狀態…</h1><p>請稍候，正在安全地連接你的帳號。</p></main>;
+  if (loading && !user) return <main className="setup app-splash" aria-busy="true"><img src="/eris-96.png" alt="" /><span className="splash-dots" aria-label="正在確認登入狀態"><i /><i /><i /></span></main>;
   if (!user) return <main className="setup"><p className="eyebrow">日常營養</p><h1>把健康資料放在你自己手中。</h1><p>登入後即可保存飲食、喝水、體重與 Hermes 的自動紀錄。</p><button className="primary" onClick={() => void signInWithPopup(auth!, googleProvider!)}>使用 Google 登入</button></main>;
 
   const changeTracking = async (key: TrackingKey, on: boolean) => { if (!user) return; const next = { ...tracking, [key]: on }; setTracking(next); try { await saveTrackingSettings(user.uid, { tracking: next }); setNotice(on ? `已開始記錄${trackingOptions.find(option => option.key === key)?.label}。` : `已關閉${trackingOptions.find(option => option.key === key)?.label}，畫面和 Eris 都不會再提。`); } catch { setTracking(tracking); setNotice("設定沒有存到，請再試一次。"); } };
