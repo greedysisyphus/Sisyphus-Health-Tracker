@@ -22,7 +22,11 @@
 @media (prefers-reduced-motion:reduce){.tab-indicator,.tab{transition:none}.tab.active .tab-icon svg,.tab-badge{animation:none}}
 
 /* Dashboard: fixed above the home indicator on phones, hidden on wide screens (the sidebar takes over). */
-.dash-tab-bar{position:fixed;left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom) + 10px);z-index:20;display:none}
+/* Pinned to the screen bottom like Eris Bot's tab bar (fixed + bottom, not computed from the reported height,
+   which is short in the home-screen app); sits just above the home indicator. */
+.dash-tab-bar{position:fixed;left:12px;right:12px;bottom:max(8px,calc(env(safe-area-inset-bottom) - 14px));z-index:20;display:none}
 @media(max-width:760px){.dash-tab-bar{display:grid}}
 /* While typing in the chat the keyboard owns the bottom of the screen. */
 .app-shell:has(.chat-app.is-typing) .dash-tab-bar{display:none}
+/* Same for any text field on a touch screen (e.g. weight, targets): the keyboard needs the bottom. */
+@media (pointer:coarse){.app-shell:has(:is(input:not([type=checkbox]):not([type=radio]),textarea,select):focus) .dash-tab-bar{display:none}}

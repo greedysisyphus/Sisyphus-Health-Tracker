@@ -78,21 +78,6 @@ export function ChatView({ user, demo, active, onWorkingChange }: { user: User; 
   const say = useCallback((message: string, tone: "ok" | "warn" = "ok") => setToast({ key: Date.now(), text: message, tone }), []);
   useEffect(() => { if (!toast) return; const timer = setTimeout(() => setToast(null), 3200); return () => clearTimeout(timer); }, [toast]);
 
-  // Keep the app inside the part of the screen the iOS keyboard leaves visible. Safari both shrinks
-  // and scrolls the visual viewport, so follow its height and its offset; hide the tabs while typing.
-  useEffect(() => {
-    const viewport = window.visualViewport;
-    if (!viewport) return;
-    const root = document.documentElement;
-    const apply = () => {
-      root.style.setProperty("--chat-vh", `${viewport.height}px`);
-      root.style.setProperty("--chat-vt", `${viewport.offsetTop}px`);
-    };
-    apply();
-    viewport.addEventListener("resize", apply);
-    viewport.addEventListener("scroll", apply);
-    return () => { viewport.removeEventListener("resize", apply); viewport.removeEventListener("scroll", apply); };
-  }, []);
 
   useEffect(() => {
     if (demo || !db) return;
