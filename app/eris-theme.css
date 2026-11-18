@@ -10,7 +10,7 @@
   --tab-surface:var(--e-panel);--tab-text:var(--muted);--tab-active-text:var(--ink);--tab-active-bg:var(--e-panel-2);--tab-border:var(--line);
   color:var(--ink);font-family:var(--font-sans),var(--font-cjk),"Noto Sans TC",system-ui,-apple-system,sans-serif
 }
-body:has(:is(.app-shell,.setup)){background:#f6f4ef}
+html:has(:is(.app-shell,.setup)),body:has(:is(.app-shell,.setup)){background:#f6f4ef}
 .app-shell .content{background:transparent}
 .app-shell.app-shell :is(h1,h2,h3){font-family:inherit;letter-spacing:-.3px}
 .app-shell h1{font-weight:700}
@@ -29,7 +29,7 @@ body:has(:is(.app-shell,.setup)){background:#f6f4ef}
     --sage:#6f9be0;--sage-dark:#4a7fd0;--sage-pale:rgba(74,127,208,.16);--ring-track:#2a2f37;
     --shadow-soft:0 1px 2px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.35);--shadow-card:var(--shadow-soft);color-scheme:dark
   }
-  body:has(:is(.app-shell,.setup)){background:#0f1115}
+  html:has(:is(.app-shell,.setup)),body:has(:is(.app-shell,.setup)){background:#0f1115}
 }
 
 /* Serif headings → the chat page's sans, in both modes. */

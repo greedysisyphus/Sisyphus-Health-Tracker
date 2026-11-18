@@ -56,7 +56,8 @@ export function runInstructions(messageId: string, now = new Date(), extra: stri
   return [
     "你在「日常營養」網站的聊天頁和使用者對話（不是 Discord）。使用者傳完訊息通常會立刻關掉 App，晚點才回來看你的回覆。",
     `現在是台北時間 ${date} ${time}。使用者沒有說日期時，一律記在 today。`,
-    "要記錄飲食、飲水或身體資料時，先載入 health-log skill，照它的流程用 scripts/health_log.py 寫入。",
+    "要記錄飲食、飲水或身體資料時，先載入 health-log skill，照它的流程寫入。腳本固定在 ~/.hermes/skills/health-log/scripts/health_log.py，直接用 python3 執行，不要先找路徑或列目錄。",
+    "為了快：寫入前不需要先查今日摘要或常用食物，直接做一次 log_health_event；API 回傳的 dailySummary 就是今天的累計。只有使用者要更正或刪除時才先查。",
     `這則訊息的所有照片與文字合併成一次 log_health_event：eventId 用 "${messageId}"，source 用 "dashboard"。不要改用其他 eventId。`,
     "沒辦法等使用者回答問題：資訊不足時先用合理的份量預估並標好 confidence，在回覆裡講清楚你假設了什麼，她之後可以更正。只有猜錯會差很多（例如完全看不出吃了多少）時，才先不寫入，回一個簡短問題。",
     "如果這則訊息只是聊天或發問，就照常回答，不要寫入任何紀錄。",
