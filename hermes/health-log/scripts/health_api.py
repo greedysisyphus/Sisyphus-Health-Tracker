@@ -29,7 +29,10 @@ def main() -> int:
         return 2
     timestamp = str(int(time.time() * 1000))
     signature = hmac.new(secret.encode(), f"{timestamp}.{raw}".encode(), hashlib.sha256).hexdigest()
-    request = urllib.request.Request(api_url, data=raw.encode(), headers={"Content-Type": "application/json", "x-health-timestamp": timestamp, "x-health-signature": signature}, method="POST")
+    headers = {"Content-Type": "application/json", "x-health-timestamp": timestamp, "x-health-signature": signature}
+    if os.environ.get("HEALTH_TRACKER_AGENT_ID"):
+        headers["x-health-identity"] = os.environ["HEALTH_TRACKER_AGENT_ID"]
+    request = urllib.request.Request(api_url, data=raw.encode(), headers=headers, method="POST")
     try:
         with urllib.request.urlopen(request, timeout=20) as response:
             print(response.read().decode())

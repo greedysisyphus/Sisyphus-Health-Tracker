@@ -87,14 +87,20 @@ export const actionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("shift_imported_history"), dates: z.array(z.string().date()).min(1), waterDates: z.array(z.string().date()).default([]), bodyDates: z.array(z.string().date()).default([]), days: z.number().int().min(-365).max(365), preserveSourceDates: z.array(z.string().date()).default([]) }),
 ]);
 
-function verifyRequest(raw: string, request: Request) {
-  const secret = process.env.HERMES_API_SECRET;
+function verifyRequest(raw: string, request: Request): string | null {
+  const identity = request.headers.get("x-health-identity");
+  if (identity !== null && identity !== "secondary") return null;
+  const secondary = identity === "secondary";
+  const secret = secondary ? process.env.HERMES_SECONDARY_API_SECRET : process.env.HERMES_API_SECRET;
+  const ownerId = secondary ? process.env.HEALTH_TRACKER_SECONDARY_OWNER_ID : process.env.HEALTH_TRACKER_OWNER_ID;
+  if (!secret || !ownerId || !/^[^/]+$/.test(ownerId)) return null;
+  if (secondary && (secret === process.env.HERMES_API_SECRET || ownerId === process.env.HEALTH_TRACKER_OWNER_ID)) return null;
   const timestamp = request.headers.get("x-health-timestamp");
   const signature = request.headers.get("x-health-signature");
-  if (!secret || !timestamp || !signature) return false;
-  if (Math.abs(Date.now() - Number(timestamp)) > 5 * 60_000) return false;
+  if (!timestamp || !signature) return null;
+  if (Math.abs(Date.now() - Number(timestamp)) > 5 * 60_000) return null;
   const expected = createHmac("sha256", secret).update(`${timestamp}.${raw}`).digest("hex");
-  try { return timingSafeEqual(Buffer.from(expected), Buffer.from(signature)); } catch { return false; }
+  try { return timingSafeEqual(Buffer.from(expected), Buffer.from(signature)) ? ownerId : null; } catch { return null; }
 }
 
 const dayRef = (db: FirebaseFirestore.Firestore, ownerId: string, date: string) => db.doc(`users/${ownerId}/dailyLogs/${date}`);
@@ -152,13 +158,12 @@ export async function POST(request: Request) {
   const requestId = getRequestId(request);
   const startedAt = Date.now();
   const raw = await request.text();
-  if (!verifyRequest(raw, request)) return Response.json({ error: "unauthorized" }, { status: 401 });
+  const ownerId = verifyRequest(raw, request);
+  if (!ownerId) return Response.json({ error: "unauthorized" }, { status: 401 });
   let body: unknown;
   try { body = JSON.parse(raw); } catch { return Response.json({ error: "invalid_json" }, { status: 400 }); }
   const parsed = actionSchema.safeParse(body);
   if (!parsed.success) return Response.json({ error: "invalid_request", details: parsed.error.flatten() }, { status: 400 });
-  const ownerId = process.env.HEALTH_TRACKER_OWNER_ID;
-  if (!ownerId) return Response.json({ error: "server_not_configured" }, { status: 500 });
   const db = getAdminDb();
   const input = parsed.data;
   const now = FieldValue.serverTimestamp();

@@ -8,16 +8,70 @@ import { POST } from "../app/api/agent/route";
 
 const secret = "test-secret";
 const document = (id: string, data: Record<string, unknown>) => ({ id, ref: { id }, data: () => data });
-const requestFor = (body: Record<string, unknown>) => {
+const requestFor = (body: Record<string, unknown>, key = secret, identity?: string) => {
   const raw = JSON.stringify(body);
   const timestamp = String(Date.now());
-  const signature = createHmac("sha256", secret).update(`${timestamp}.${raw}`).digest("hex");
-  return new Request("https://tracker.test/api/agent", { method: "POST", body: raw, headers: { "x-health-timestamp": timestamp, "x-health-signature": signature } });
+  const signature = createHmac("sha256", key).update(`${timestamp}.${raw}`).digest("hex");
+  return new Request("https://tracker.test/api/agent", { method: "POST", body: raw, headers: { "x-health-timestamp": timestamp, "x-health-signature": signature, ...(identity !== undefined ? { "x-health-identity": identity } : {}) } });
 };
 
 beforeEach(() => {
   process.env = { ...process.env, HERMES_API_SECRET: secret, HEALTH_TRACKER_OWNER_ID: "owner" };
+  delete process.env.HERMES_SECONDARY_API_SECRET;
+  delete process.env.HEALTH_TRACKER_SECONDARY_OWNER_ID;
   getAdminDb.mockReset();
+});
+
+describe("agent identity routing", () => {
+  const action = { action: "get_daily_summary", date: "2026-08-29", ownerId: "injected" };
+  const db = () => {
+    const entries = { get: vi.fn().mockResolvedValue({ docs: [] }) };
+    const doc = vi.fn((path: string) => ({ path, get: vi.fn().mockResolvedValue({ data: () => ({}) }), collection: vi.fn(() => entries) }));
+    getAdminDb.mockReturnValue({ doc });
+    return doc;
+  };
+
+  it("keeps unsigned identity absent on the legacy owner and ignores body ownerId", async () => {
+    const doc = db();
+    expect((await POST(requestFor(action))).status).toBe(200);
+    expect(doc.mock.calls.map(([path]) => path)).toContain("users/owner/dailyLogs/2026-08-29");
+    expect(doc.mock.calls.every(([path]) => path.startsWith("users/owner/"))).toBe(true);
+  });
+
+  it("routes only the separate secondary credential to its configured UID", async () => {
+    process.env.HERMES_SECONDARY_API_SECRET = "secondary-test-secret";
+    process.env.HEALTH_TRACKER_SECONDARY_OWNER_ID = "secondary-user";
+    const doc = db();
+    expect((await POST(requestFor(action, "secondary-test-secret", "secondary"))).status).toBe(200);
+    expect(doc.mock.calls.map(([path]) => path)).toContain("users/secondary-user/dailyLogs/2026-08-29");
+    expect(doc.mock.calls.every(([path]) => path.startsWith("users/secondary-user/"))).toBe(true);
+    doc.mockClear();
+    expect((await POST(requestFor(action, secret))).status).toBe(200);
+    expect(doc.mock.calls.every(([path]) => path.startsWith("users/owner/"))).toBe(true);
+  });
+
+  it("fails closed for mismatched, unknown, missing, or colliding secondary configuration", async () => {
+    const doc = db();
+    process.env.HERMES_SECONDARY_API_SECRET = "secondary-test-secret";
+    process.env.HEALTH_TRACKER_SECONDARY_OWNER_ID = "secondary-user";
+    const secondary = requestFor(action, "secondary-test-secret", "secondary");
+    secondary.headers.set("x-health-identity", "other");
+    const attempts = [
+      requestFor(action, secret, "secondary"),
+      requestFor(action, "secondary-test-secret"),
+      secondary,
+      requestFor(action, "secondary-test-secret", "injected"),
+    ];
+    for (const request of attempts) expect((await POST(request)).status).toBe(401);
+    delete process.env.HEALTH_TRACKER_SECONDARY_OWNER_ID;
+    expect((await POST(requestFor(action, "secondary-test-secret", "secondary"))).status).toBe(401);
+    process.env.HEALTH_TRACKER_SECONDARY_OWNER_ID = "owner";
+    expect((await POST(requestFor(action, "secondary-test-secret", "secondary"))).status).toBe(401);
+    process.env.HEALTH_TRACKER_SECONDARY_OWNER_ID = "secondary-user";
+    process.env.HERMES_SECONDARY_API_SECRET = secret;
+    expect((await POST(requestFor(action, secret, "secondary"))).status).toBe(401);
+    expect(doc).not.toHaveBeenCalled();
+  });
 });
 
 describe("agent route food search", () => {

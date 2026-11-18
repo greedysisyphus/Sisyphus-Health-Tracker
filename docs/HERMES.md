@@ -13,6 +13,12 @@ HERMES_API_SECRET=與 Vercel 相同的一串隨機密鑰
 
 `HERMES_API_SECRET` 只存在 Hermes 主機與 Vercel；不可傳到 Discord、GitHub 或瀏覽器。
 
+### 第二位使用者（需先建立自己的 Firebase 帳號）
+
+先讓第二位使用者登入網站，從 Firebase Authentication 取得她自己的 UID。部署環境設定 `HEALTH_TRACKER_SECONDARY_OWNER_ID` 為該 UID，另以獨立隨機密鑰設定 `HERMES_SECONDARY_API_SECRET`（不可與原密鑰相同）。沒有 UID 時不要設定假的值；第二位使用者的 API 請求會被拒絕。原本的 `HEALTH_TRACKER_OWNER_ID` 和 `HERMES_API_SECRET` 不變。
+
+第二位使用者的 Hermes 執行環境單獨設定 `HEALTH_TRACKER_URL`、`HERMES_API_SECRET`（值為部署端的 `HERMES_SECONDARY_API_SECRET`）及 `HEALTH_TRACKER_AGENT_ID=secondary`；不可把原使用者的密鑰交給這個環境。`health_api.py` 會送出 `x-health-identity: secondary`，伺服器以該身份選擇**對應密鑰和預先設定的 UID**，不接受請求指定 UID。若共用同一 Hermes 實例，必須確保每位使用者的執行環境和密鑰隔離；單靠對話提示詞不能隔離密鑰或身份。網站儀表板仍由 Firebase 登入身份讀取各自 `users/{uid}` 資料。
+
 ## 安裝與更新 Skill
 
 將專案中的 `hermes/health-log/` 複製到 Hermes 主機的 `~/.hermes/skills/health-log/`。必須保留：
@@ -87,4 +93,4 @@ x-health-timestamp: Unix milliseconds
 x-health-signature: HMAC-SHA256("{timestamp}.{raw JSON body}")
 ```
 
-請求五分鐘後失效。API 永遠寫入 `HEALTH_TRACKER_OWNER_ID` 對應的帳號，請求不可指定任意使用者。
+請求五分鐘後失效。未帶 `x-health-identity` 的既有請求仍使用 `HERMES_API_SECRET` 和 `HEALTH_TRACKER_OWNER_ID`；`secondary` 身份只接受第二組密鑰並寫入第二組 UID。其他身份、缺少設定或重複密鑰／UID 都被拒絕；請求不可指定任意使用者。
