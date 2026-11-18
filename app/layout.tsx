@@ -20,7 +20,7 @@ export const metadata: Metadata = {
   title: "Eris Health",
   // A local phone-test build (NEXT_PUBLIC_ALLOW_DEMO=1) opens the home-screen app on the demo account.
   manifest: process.env.NEXT_PUBLIC_ALLOW_DEMO === "1" ? "/chat-demo.webmanifest" : "/chat.webmanifest",
-  appleWebApp: { capable: true, title: "Eris Health", statusBarStyle: "black-translucent" },
+  appleWebApp: { capable: true, title: "Eris Health", statusBarStyle: "default" },
   icons: { apple: "/eris-180.png", icon: "/eris-96.png" },
   description: "一個為日常飲食與減脂節奏打造的個人紀錄工具。",
 };

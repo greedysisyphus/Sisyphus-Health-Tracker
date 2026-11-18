@@ -73,20 +73,11 @@ export function HealthApp({ initialView = "daily" }: { initialView?: View }) {
     const viewport = window.visualViewport;
     if (!viewport) return;
     const root = document.documentElement;
-    // Home-screen app on iPhone (measured: screen 956, innerHeight 894, 100lvh 956, safe top 62): the page is drawn
-    // under the status bar but the reported height leaves out those 62px, so anything placed from the bottom sat
-    // 62px too high. Add the missing part back, measured once from 100lvh with no keyboard up.
-    const standalone = matchMedia("(display-mode: standalone)").matches || Boolean((navigator as unknown as { standalone?: boolean }).standalone);
-    let missing = 0;
-    if (standalone) {
-      const probe = document.createElement("div");
-      probe.style.cssText = "position:fixed;left:-9999px;top:0;width:1px;height:100lvh;visibility:hidden";
-      document.body.appendChild(probe);
-      missing = Math.max(0, Math.round(probe.getBoundingClientRect().height - window.innerHeight));
-      probe.remove();
-    }
+    // Home-screen app: the status bar is opaque ("default"), so the app starts below it and the height iOS reports
+    // is the height that is really there. With "black-translucent" iOS drew the app under the status bar but left
+    // that strip out of the reported height (measured 894 of 956), which put the tab bar 62px too high.
     const apply = () => {
-      root.style.setProperty("--app-vh", `${viewport.height + missing}px`);
+      root.style.setProperty("--app-vh", `${viewport.height}px`);
       root.style.setProperty("--app-vt", `${viewport.offsetTop}px`);
     };
     apply();
