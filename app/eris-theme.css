@@ -14,8 +14,18 @@ html:has(:is(.app-shell,.setup)),body:has(:is(.app-shell,.setup)){background:#f6
 .app-shell .content{background:transparent}
 .app-shell.app-shell :is(h1,h2,h3){font-family:inherit;letter-spacing:-.3px}
 .app-shell h1{font-weight:700}
-.app-shell .hero-card{background:linear-gradient(135deg,#27529b 0%,#3a6fc2 55%,#6d98dc 100%);box-shadow:0 16px 36px rgba(52,101,178,.28)}
-.app-shell .hero-card .meter i{background:#fff}
+/* Calorie card: a panel like every other card (no saturated block); the number carries the weight and
+   the bar uses Eris blue, turning coral when over the range. */
+.app-shell .hero-card{background:var(--e-panel);color:var(--ink);border:1px solid var(--line);box-shadow:var(--shadow-soft)}
+.app-shell .hero-card :is(p,span,small){color:var(--muted)}
+.app-shell .hero-card .calorie strong,.app-shell .hero-card .weight strong{color:var(--ink)}
+.app-shell .hero-card .meter{background:var(--ring-track)}
+.app-shell .hero-card .meter i{background:var(--sage-dark)}
+.app-shell .hero-card .remaining{color:var(--sage-dark)!important}
+.app-shell .hero-card .over{color:var(--coral)!important}
+.app-shell .hero-card:has(.over) .meter i{background:var(--coral)}
+.app-shell .hero-card .weight{border-color:var(--line)}
+.app-shell .hero-card .weight em{color:var(--muted)}
 .app-shell .brand i{background:var(--sage-dark);font-family:inherit;font-weight:700}
 .app-shell :is(input,select,textarea){color:var(--ink);color-scheme:inherit}
 .app-shell [hidden]{display:none!important}
