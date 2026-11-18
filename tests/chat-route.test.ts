@@ -27,7 +27,7 @@ vi.mock("../lib/firebase-admin", () => ({
 }));
 
 import { GET, POST } from "../app/api/chat/route";
-import { resolveChatTarget, runInstructions } from "../lib/chat-hermes";
+import { resolveChatTarget, runInstructions, runRequestBody } from "../lib/chat-hermes";
 
 const WIFE = "wife-uid";
 const OWNER = "owner-uid";
@@ -99,6 +99,8 @@ describe("dashboard chat route", () => {
     expect(body.input[0].content.filter((part: { type: string }) => part.type === "input_image")).toHaveLength(3);
     expect(body.instructions).toContain('eventId 用 "msg_00000001"');
     expect(body.instructions).toContain('source 用 "dashboard"');
+    // Never the bare date: two profiles sharing a session id leaked one person's chat into the other's.
+    expect(body.session_id).toMatch(/^dashboard-secondary-\d{4}-\d{2}-\d{2}$/);
     const saved = store.get(`users/${WIFE}/chatMessages/msg_00000001`);
     expect(saved).toMatchObject({ status: "processing", runId: "run_1", photoCount: 3, thumbs: [thumb, thumb, thumb] });
     expect(saved).not.toHaveProperty("photos");
@@ -200,10 +202,17 @@ describe("dashboard chat route", () => {
 describe("chat target resolution", () => {
   it("maps only a configured uid to its own Hermes endpoint and rejects weak or insecure settings", () => {
     const env = { HEALTH_TRACKER_SECONDARY_OWNER_ID: WIFE, HERMES_SECONDARY_CHAT_URL: "https://h.example/p/w/", HERMES_SECONDARY_CHAT_KEY: CHAT_KEY } as unknown as NodeJS.ProcessEnv;
-    expect(resolveChatTarget(WIFE, env)).toEqual({ url: "https://h.example/p/w", key: CHAT_KEY });
+    expect(resolveChatTarget(WIFE, env)).toEqual({ url: "https://h.example/p/w", key: CHAT_KEY, session: "secondary" });
     expect(resolveChatTarget(OWNER, env)).toBeNull();
     expect(resolveChatTarget(WIFE, { ...env, HERMES_SECONDARY_CHAT_KEY: "short" })).toBeNull();
     expect(resolveChatTarget(WIFE, { ...env, HERMES_SECONDARY_CHAT_URL: "http://h.example/p/w" })).toBeNull();
+  });
+
+  it("gives each person a different Hermes session on the same day", () => {
+    const message = { id: "msg_00000001", text: "hi", photos: [], thumbs: [] };
+    const now = new Date("2026-11-18T12:00:00Z");
+    expect(runRequestBody(message, "owner", now).session_id).toBe("dashboard-owner-2026-11-18");
+    expect(runRequestBody(message, "secondary", now).session_id).toBe("dashboard-secondary-2026-11-18");
   });
 
   it("dates the instructions in Asia/Taipei", () => {
