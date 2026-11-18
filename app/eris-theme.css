@@ -1,0 +1,139 @@
+/* Eris look for the dashboard: the chat page's palette, type and dark mode, so switching tabs never
+   drops back to the old green style. Tokens first; the generated block maps hard-coded light colours
+   in globals.css / mobile.css to the dark panels. When those files gain colours, regenerate that block:
+   python3 -I scripts/gen-eris-dark-theme.py app/globals.css app/mobile.css app/tracking.css */
+:is(.app-shell,.setup){
+  --e-bg:#f6f4ef;--e-panel:#ffffff;--e-panel-2:#f1eee7;
+  --ink:#1d2024;--muted:#6d7178;--paper:#f6f4ef;--surface:#ffffff;--line:rgba(29,32,36,.09);
+  --sage:#7fa0d8;--sage-dark:#3465b2;--sage-pale:#e8eef9;--ochre:#d99a3d;--coral:#d9604d;--ring-track:#ebe8e1;
+  --shadow-soft:0 1px 2px rgba(0,0,0,.05),0 8px 24px rgba(0,0,0,.06);--shadow-card:0 1px 2px rgba(0,0,0,.05),0 10px 28px rgba(0,0,0,.07);
+  --tab-surface:var(--e-panel);--tab-text:var(--muted);--tab-active-text:var(--ink);--tab-active-bg:var(--e-panel-2);--tab-border:var(--line);
+  color:var(--ink);font-family:var(--font-sans),var(--font-cjk),"Noto Sans TC",system-ui,-apple-system,sans-serif
+}
+body:has(:is(.app-shell,.setup)){background:#f6f4ef}
+.app-shell .content{background:transparent}
+.app-shell.app-shell :is(h1,h2,h3){font-family:inherit;letter-spacing:-.3px}
+.app-shell h1{font-weight:700}
+.app-shell .hero-card{background:linear-gradient(135deg,#27529b 0%,#3a6fc2 55%,#6d98dc 100%);box-shadow:0 16px 36px rgba(52,101,178,.28)}
+.app-shell .hero-card .meter i{background:#fff}
+.app-shell .brand i{background:var(--sage-dark);font-family:inherit;font-weight:700}
+.app-shell :is(input,select,textarea){color:var(--ink);color-scheme:inherit}
+@media(max-width:760px){
+  .app-shell .mobile-topbar{position:sticky;top:0;z-index:15;margin:-18px -16px 20px;padding:calc(env(safe-area-inset-top) + 10px) 16px 10px;
+    background:color-mix(in srgb,var(--e-bg) 82%,transparent);backdrop-filter:saturate(1.4) blur(18px);-webkit-backdrop-filter:saturate(1.4) blur(18px);border-bottom:1px solid var(--line)}
+}
+@media (prefers-color-scheme:dark){
+  :is(.app-shell,.setup){
+    --e-bg:#0f1115;--e-panel:#1b1e24;--e-panel-2:#23272e;
+    --ink:#eef0f3;--muted:#9aa0aa;--paper:#0f1115;--surface:#1b1e24;--line:rgba(255,255,255,.08);
+    --sage:#6f9be0;--sage-dark:#4a7fd0;--sage-pale:rgba(74,127,208,.16);--ring-track:#2a2f37;
+    --shadow-soft:0 1px 2px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.35);--shadow-card:var(--shadow-soft);color-scheme:dark
+  }
+  body:has(:is(.app-shell,.setup)){background:#0f1115}
+}
+
+/* Serif headings → the chat page's sans, in both modes. */
+.app-shell .brand i{font-family:inherit;letter-spacing:-.2px}
+.app-shell h1{font-family:inherit;letter-spacing:-.2px}
+.app-shell .section-heading h2, .app-shell .meal-card h2, .app-shell .settings h2{font-family:inherit;letter-spacing:-.2px}
+.app-shell .trend-card h3{font-family:inherit;letter-spacing:-.2px}
+.app-shell .weight-trend-copy h3{font-family:inherit;letter-spacing:-.2px}
+.app-shell .hero-card .calorie strong{font-family:inherit;letter-spacing:-.2px}
+.app-shell .weekly-goals h2{font-family:inherit;letter-spacing:-.2px}
+.app-shell .weekly-trends-heading h2{font-family:inherit;letter-spacing:-.2px}
+.app-shell .targets-hero strong{font-family:inherit;letter-spacing:-.2px}
+.app-shell .target-group-heading h2{font-family:inherit;letter-spacing:-.2px}
+.app-shell .targets-grid input{font-family:inherit;letter-spacing:-.2px}
+.app-shell .setup h1{font-family:inherit;letter-spacing:-.2px}
+.app-shell .trend-card h2, .app-shell .weekly-goals h2, .app-shell .weekly-trends h2{font-family:inherit;letter-spacing:-.2px}
+.app-shell .sheet-title h2{font-family:inherit;letter-spacing:-.2px}
+/* Generated from globals.css + mobile.css by gen_theme.py: hard-coded light colours → Eris dark tokens. */
+@media (prefers-color-scheme:dark){
+  .app-shell .table-wrap th{background:var(--e-panel-2)}
+  .app-shell .table-wrap tbody tr:hover td{background:var(--e-panel)}
+  .app-shell .table-edit{border-color:var(--line);background:var(--e-panel)}
+  .app-shell .overview-state{background:var(--e-panel)}
+  .app-shell .export-range-presets button{background:var(--e-panel)}
+  .app-shell .export-range-presets button:hover{border-color:var(--line)}
+  .app-shell .date-bar button{background:var(--e-panel)}
+  .app-shell .date-bar input{background:var(--e-panel)}
+  .app-shell .entry-actions button{background:var(--e-panel);border-color:var(--line)}
+  .app-shell .prompt-sheet textarea{background:var(--e-panel)}
+  .app-shell .notice{background:var(--e-panel-2);border-color:var(--line)}
+  .app-shell .water .quick-row button{background:var(--e-panel)}
+  .app-shell .weight-input input{background:var(--e-panel)}
+  .app-shell .sidebar{background:var(--e-panel)}
+  .app-shell .ring-wrap, .app-shell .water{background:var(--e-panel)}
+  .app-shell .ring-hole{background:var(--e-panel)}
+  .app-shell .quick-row button, .app-shell .copy-btn{background:var(--e-panel)}
+  .app-shell .food-icon{background:var(--e-panel-2);border-color:var(--line)}
+  .app-shell .meal-card, .app-shell .trend-card, .app-shell .report, .app-shell .settings{background:var(--e-panel)}
+  .app-shell .report{background:var(--e-panel-2)}
+  .app-shell .search{background:var(--e-panel);background:var(--e-panel) !important}
+  .app-shell .food-library{background:var(--e-panel)}
+  .app-shell .settings input, .app-shell .sheet input, .app-shell .sheet select{background:var(--e-panel)}
+  .app-shell .sheet{background:var(--e-panel)}
+  .app-shell .grab{background:var(--e-panel-2)}
+  .app-shell .sheet-title button{background:var(--e-panel-2)}
+  .app-shell .parse-btn{background:var(--e-panel)}
+  .app-shell .import-error{background:var(--e-panel-2)}
+  .app-shell .import-success{background:var(--e-panel-2)}
+  .app-shell .weight-trend-stats>div{background:var(--e-panel-2)}
+  .app-shell .sheet-footer{background:var(--e-panel)}
+  .app-shell .sidebar nav button.active{box-shadow:none}
+  .app-shell .refresh-btn{background:var(--e-panel)}
+  .app-shell .daily-secondary b{background:var(--e-panel-2);background:var(--e-panel)}
+  .app-shell .daily-guidance{background:var(--e-panel-2);background:var(--e-panel)}
+  .app-shell .weight-input{background:var(--e-panel)}
+  .app-shell .meal-group{background:var(--e-panel);border-color:var(--line)}
+  .app-shell .meal-group-heading{background:var(--e-panel);border-color:var(--line)}
+  .app-shell .entry{border-color:var(--line);background:var(--e-panel)}
+  .app-shell .entry-actions button:last-child{background:var(--e-panel-2);border-color:var(--line)}
+  .app-shell .entry-source{background:var(--e-panel-2)}
+  .app-shell .entry-source.source-ai_estimated, .app-shell .entry-source.source-manual_estimated{background:var(--e-panel-2)}
+  .app-shell .entry-source.source-restaurant_official, .app-shell .entry-source.source-nutrition_label{background:var(--e-panel-2)}
+  .app-shell .trend-card, .app-shell .weekly-goals, .app-shell .weekly-trends, .app-shell .targets-card, .app-shell .food-library{border-color:var(--line)}
+  .app-shell .food-library .food-actions button{background:var(--e-panel)}
+  .app-shell .weekly-goals, .app-shell .weekly-trends{background:var(--e-panel)}
+  .app-shell .trend-sparkline{background:var(--e-panel)}
+  .app-shell .bottom-nav{background:var(--e-panel)}
+  .app-shell .advanced-toggle{background:var(--e-panel)}
+  .app-shell .form-error{background:var(--e-panel-2)}
+  .app-shell .drink-shortcuts button{background:var(--e-panel)}
+  .app-shell .hydration-reminder{background:var(--e-panel-2);border-color:var(--line)}
+  .app-shell .hydration-reminder button, .app-shell .duplicate-reminder button, .app-shell .library-toolbar button{background:var(--e-panel)}
+  .app-shell .duplicate-reminder{background:var(--e-panel-2);border-color:var(--line)}
+  .app-shell .weekly-goals{background:var(--e-panel)}
+  .app-shell .today-so-far{background:var(--e-panel-2);border-color:var(--line)}
+  .app-shell .weekly-trends{background:var(--e-panel)}
+  .app-shell .targets-card{background:var(--e-panel)}
+  .app-shell .targets-hero{background:var(--e-panel-2)}
+  .app-shell .targets-grid label{background:var(--e-panel);border-color:var(--line)}
+  .app-shell .targets-grid label > div{border-color:var(--line)}
+  .app-shell .targets-grid label:focus-within{box-shadow:none}
+  .app-shell .library-group-tabs button{background:var(--e-panel)}
+  .app-shell .library-category-chips button{background:var(--e-panel)}
+  .app-shell .food-library-group-heading{background:var(--e-panel-2)}
+  .app-shell .setup{background:var(--e-panel)}
+  .app-shell .entry-actions button:last-child:hover{background:var(--e-panel-2)}
+  .app-shell .water{background:var(--e-panel)}
+  .app-shell .import-preview{background:var(--e-panel)}
+  .app-shell .trend-card, .app-shell .weekly-goals, .app-shell .weekly-trends, .app-shell .today-so-far{background:var(--e-panel)}
+  .app-shell .weight-trend-card{background:var(--e-panel)}
+  .app-shell .weight-trend-stats > div{background:var(--e-panel)}
+  .app-shell .weekly-summary > div > div{background:var(--e-panel)}
+  .app-shell .library-category-chips button.active{border-color:var(--line)}
+  .app-shell .food-library article:hover{background:var(--e-panel)}
+  .app-shell .hydration-reminder, .app-shell .duplicate-reminder{background:var(--e-panel)}
+  .app-shell .hydration-reminder button, .app-shell .duplicate-reminder button{background:var(--e-panel)}
+  .app-shell .sheet-title button:hover{background:var(--e-panel-2)}
+  .app-shell .focus-field input{background:var(--e-panel)}
+  @media (max-width: 760px){
+    .app-shell .date-bar label{background:var(--e-panel)}
+    .app-shell .table-wrap tr{background:var(--e-panel)}
+    .app-shell .bottom-nav{background:var(--e-panel)}
+  }
+  @media(max-width:760px){
+    .app-shell .bottom-nav{background:var(--e-panel)}
+  }
+}
