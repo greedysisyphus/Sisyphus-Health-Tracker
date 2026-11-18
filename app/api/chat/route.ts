@@ -89,7 +89,9 @@ export async function POST(request: Request) {
   try {
     runId = await startRun(target, message, fetch, now, extra);
   } catch (error) {
-    await ref.update({ status: "retry", error: error instanceof Error ? error.message.slice(0, 200) : "hermes_unreachable", updatedAt: FieldValue.serverTimestamp() });
+    const reason = error instanceof Error ? error.message.slice(0, 200) : "hermes_unreachable";
+    console.warn("chat_hermes_unavailable", { uid, id: message.id, reason });
+    await ref.update({ status: "retry", error: reason, updatedAt: FieldValue.serverTimestamp() });
     return json({ error: "hermes_unavailable" }, 503);
   }
   await ref.update({ status: "processing", runId, error: null, updatedAt: FieldValue.serverTimestamp() });

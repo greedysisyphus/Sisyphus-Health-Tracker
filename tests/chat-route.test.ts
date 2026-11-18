@@ -57,6 +57,7 @@ describe("dashboard chat route", () => {
     delete process.env.HERMES_CHAT_URL;
     delete process.env.HERMES_CHAT_KEY;
     verifyIdToken.mockResolvedValue({ uid: WIFE });
+    process.env.CHAT_RETRY_DELAYS_MS = "0,0";
     hermes.mockResolvedValue(new Response(JSON.stringify({ run_id: "run_1", status: "started" }), { status: 202 }));
     vi.stubGlobal("fetch", hermes);
   });
@@ -111,12 +112,13 @@ describe("dashboard chat route", () => {
     expect(hermes).toHaveBeenCalledOnce();
   });
 
-  it("tells the phone to keep the message when Hermes is unreachable, then accepts the retry", async () => {
-    hermes.mockRejectedValueOnce(new Error("ECONNREFUSED"));
+  it("tells the phone to keep the message when Hermes stays unreachable, then accepts the retry", async () => {
+    const down = Object.assign(new TypeError("fetch failed"), { cause: { code: "ECONNRESET" } });
+    hermes.mockRejectedValueOnce(down).mockRejectedValueOnce(down).mockRejectedValueOnce(down);
     expect((await send({ id: "msg_00000001", text: "水 500" })).status).toBe(503);
-    expect(store.get(`users/${WIFE}/chatMessages/msg_00000001`)).toMatchObject({ status: "retry" });
+    expect(store.get(`users/${WIFE}/chatMessages/msg_00000001`)).toMatchObject({ status: "retry", error: "fetch failed (ECONNRESET)" });
     expect((await send({ id: "msg_00000001", text: "水 500" })).status).toBe(200);
-    expect(hermes).toHaveBeenCalledTimes(2);
+    expect(hermes).toHaveBeenCalledTimes(4);
     expect(store.get(`users/${WIFE}/chatMessages/msg_00000001`)).toMatchObject({ status: "processing", runId: "run_1" });
   });
 
@@ -124,7 +126,7 @@ describe("dashboard chat route", () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     try {
       vi.setSystemTime(new Date("2026-11-18T10:00:00Z"));
-      hermes.mockRejectedValueOnce(new Error("response lost"));
+      hermes.mockRejectedValueOnce(new Error("response lost")).mockRejectedValueOnce(new Error("response lost")).mockRejectedValueOnce(new Error("response lost"));
       expect((await send({ id: "msg_00000002", text: "晚餐" })).status).toBe(503);
       vi.setSystemTime(new Date("2026-11-18T16:30:00Z")); // next day in Taipei
       expect((await send({ id: "msg_00000002", text: "晚餐" })).status).toBe(200);
@@ -144,7 +146,7 @@ describe("dashboard chat route", () => {
 
   it("tells Eris what this person does not track, and keeps that wording on retries", async () => {
     store.set(`users/${WIFE}`, { tracking: { water: false, weight: true, steps: false }, healthFocus: "減脂・多吃蛋白質" });
-    hermes.mockRejectedValueOnce(new Error("response lost"));
+    hermes.mockRejectedValueOnce(new Error("response lost")).mockRejectedValueOnce(new Error("response lost")).mockRejectedValueOnce(new Error("response lost"));
     expect((await send({ id: "msg_00000004", text: "奶茶一杯" })).status).toBe(503);
     store.set(`users/${WIFE}`, { tracking: { water: true, weight: true, steps: true } });
     expect((await send({ id: "msg_00000004", text: "奶茶一杯" })).status).toBe(200);
@@ -168,6 +170,22 @@ describe("dashboard chat route", () => {
     const tooMany = await send({ id: "msg_00000007", photos: Array(10).fill(photo), thumbs: Array(10).fill(`data:image/jpeg;base64,${"D".repeat(100_000)}`) });
     expect(tooMany.status).toBe(400);
     expect((await tooMany.json()).reasons).toContain("thumbs_too_large");
+  });
+
+  it("rides out a dropped connection within one send, reaching the same run", async () => {
+    hermes.mockRejectedValueOnce(new TypeError("fetch failed"));
+    expect((await send({ id: "msg_00000008", text: "體重 54" })).status).toBe(200);
+    expect(hermes).toHaveBeenCalledTimes(2);
+    const [first, second] = hermes.mock.calls.map(call => call[1] as RequestInit);
+    expect(second.body).toBe(first.body);
+    expect((second.headers as Record<string, string>)["Idempotency-Key"]).toBe((first.headers as Record<string, string>)["Idempotency-Key"]);
+  });
+
+  it("does not retry when Hermes answers with a refusal", async () => {
+    hermes.mockResolvedValueOnce(new Response(JSON.stringify({ error: { code: "gateway_auth_failed" } }), { status: 401 }));
+    expect((await send({ id: "msg_00000009", text: "水" })).status).toBe(503);
+    expect(hermes).toHaveBeenCalledOnce();
+    expect(store.get(`users/${WIFE}/chatMessages/msg_00000009`)).toMatchObject({ error: "hermes_run_rejected:401:gateway_auth_failed" });
   });
 
   it("reports whether chat is enabled for the signed-in user", async () => {

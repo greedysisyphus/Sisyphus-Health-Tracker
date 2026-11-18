@@ -102,6 +102,8 @@ export function ChatView({ user, demo, active, onWorkingChange }: { user: User; 
     } catch { /* offline: try again on next focus */ }
   }, [user, demo]);
 
+  /** Lets a delayed retry call the latest send. */
+  const sendRef = useRef<((item: OutboxItem) => Promise<void>) | null>(null);
   const send = useCallback(async (item: OutboxItem) => {
     if (DEMO_ALLOWED && demo) {
       setTimeout(() => {
@@ -140,13 +142,19 @@ export function ChatView({ user, demo, active, onWorkingChange }: { user: User; 
       }
       throw new Error(String(response.status));
     } catch {
-      const failed = { ...item, failed: true };
+      // Keep it on the phone and try again by itself while the app is open (15s, 45s, 2 min); reopening the app
+      // or tapping the chip also resends. The server makes every retry land on the same Eris run.
+      const attempts = (item.attempts ?? 0) + 1;
+      const failed = { ...item, failed: true, attempts };
       await outbox.put(failed);
       setPending(list => list.map(entry => entry.id === item.id ? failed : entry));
+      const delay = [15_000, 45_000, 120_000][attempts - 1];
+      if (delay) setTimeout(() => { void sendRef.current?.(failed); }, delay);
     } finally {
       inFlight.current.delete(item.id);
     }
   }, [user, say, demo]);
+  useEffect(() => { sendRef.current = send; }, [send]);
 
   const flush = useCallback(async () => {
     const items = await outbox.all();
@@ -169,7 +177,11 @@ export function ChatView({ user, demo, active, onWorkingChange }: { user: User; 
   const rows = useMemo<Row[]>(() => {
     const byId = new Map<string, Row>();
     for (const doc of demo ? demoRows : docs) byId.set(doc.id, { id: doc.id, text: doc.text, thumbs: doc.thumbs, createdAt: doc.createdAt, doc });
-    for (const item of pending) if (!byId.has(item.id)) byId.set(item.id, { id: item.id, text: item.text, thumbs: item.thumbs, createdAt: item.createdAt, local: item });
+    for (const item of pending) {
+      const known = byId.get(item.id);
+      if (known) known.local = item; // the server already has it (e.g. waiting to retry): keep the phone's copy for the chip
+      else byId.set(item.id, { id: item.id, text: item.text, thumbs: item.thumbs, createdAt: item.createdAt, local: item });
+    }
     return [...byId.values()].sort((a, b) => a.createdAt - b.createdAt);
   }, [docs, pending, demo, demoRows]);
 
@@ -321,7 +333,7 @@ function MessageRow({ row, fresh, onRetry, onOpen }: { row: Row; fresh: boolean;
   const local = row.local;
   let chip: React.ReactNode;
   if (local && !local.failed) chip = <span className="chip sending"><i className="chat-spinner" />傳送中</span>;
-  else if (local?.failed) chip = <button className="chip retry" onClick={() => onRetry(local)}>沒送出・點這裡重試</button>;
+  else if (local?.failed) chip = <button className="chip retry" onClick={() => onRetry(local)}>連線不穩，會自動再試・點這裡馬上重送</button>;
   else if (status === "sending" || status === "retry") chip = <span className="chip sending"><i className="chat-spinner" />傳送中</span>;
   else chip = <span className="chip sent">{clock(row.createdAt)}・已送出</span>;
 
