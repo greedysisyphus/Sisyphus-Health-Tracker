@@ -13,7 +13,7 @@ import "./eris-theme.css";
 import { defaultTracking, parseHealthFocus, parseTracking, trackingOptions, type TrackingKey, type TrackingPrefs } from "../lib/tracking";
 import { resolveDayBodyMetrics } from "../lib/agent-health";
 import { buildHistoryExportDay, formatHistoryImportNotice, historyExportPreviewFromData, validateHistoryExport, type HistoryExport, type HistoryExportPreview } from "../lib/history-export";
-import { getBodyLog, getDailyLog, getUserProfile, listDailyEntries, listDailyOverviews, listFoods, mergeSavedFoodDuplicates, removeEntry, removeSavedFood, saveBodyLog, saveEntry, saveHealthTargets, saveSavedFood, saveTrackingSettings, saveWater, type DailyOverview, type SavedFoodInput, type SavedFoodSummary } from "../services/health-service";
+import { getBodyLog, getDailyLog, getUserProfile, listDailyEntries, listDailyOverviews, listFoods, mergeSavedFoodDuplicates, removeEntry, removeSavedFood, saveBodyLog, saveEntry, saveHealthTargets, saveSavedFood, saveTrackingSettings, saveWater, watchDay, type DailyOverview, type SavedFoodInput, type SavedFoodSummary } from "../services/health-service";
 
 export type View = "chat" | "daily" | "overview" | "trends" | "foods" | "settings";
 const VIEWS: View[] = ["chat", "daily", "overview", "trends", "foods", "settings"];
@@ -69,8 +69,19 @@ export function HealthApp({ initialView = "daily" }: { initialView?: View }) {
   const [loading, setLoading] = useState(() => Boolean(auth) && !auth?.currentUser);
   const [notice, setNotice] = useState("");
   const [view, setView] = useState<View>(initialView);
+  /** Bumped to reconnect the live view of the day (coming back to 每日 or to the app). */
+  const [syncKey, setSyncKey] = useState(0);
+  const todayRef = useRef(formatLocalDate(new Date()));
+  /** Follow the calendar when a new day has started (if 今天 was showing), then reconnect for fresh data. */
+  const resync = useCallback(() => {
+    const now = formatLocalDate(new Date());
+    const was = todayRef.current;
+    if (now !== was) { todayRef.current = now; setDate(current => current === was ? now : current); }
+    setSyncKey(key => key + 1);
+  }, []);
   /** Switch tab in place: keep the address in sync (reopening returns here) and start the new tab at the top. */
   const selectView = (next: View) => {
+    if (next === "daily") resync();
     setView(next);
     window.history.replaceState(window.history.state, "", viewPath(next));
     if (next !== "chat") { document.querySelector(".app-shell .content")?.scrollTo({ top: 0 }); window.scrollTo({ top: 0 }); }
@@ -184,14 +195,22 @@ export function HealthApp({ initialView = "daily" }: { initialView?: View }) {
       if (historyLoadId.current === loadId) setHistoryLoading(false);
     }
   }, [user]);
-  useEffect(() => { const timer = window.setTimeout(() => { void loadDaily(); }, 0); return () => window.clearTimeout(timer); }, [loadDaily]);
+  // 每日 is always live: whatever Eris (or another device) records shows up without a refresh button.
   useEffect(() => {
-    if (!user || view !== "daily") return;
-    const refreshWhenVisible = () => { if (document.visibilityState === "visible") void loadDaily(); };
-    window.addEventListener("focus", refreshWhenVisible);
-    document.addEventListener("visibilitychange", refreshWhenVisible);
-    return () => { window.removeEventListener("focus", refreshWhenVisible); document.removeEventListener("visibilitychange", refreshWhenVisible); };
-  }, [loadDaily, user, view]);
+    if (!user) return;
+    return watchDay(user.uid, date, day => {
+      const metrics = resolveDayBodyMetrics(day.daily, day.body);
+      setEntries(day.entries); setWaterMl(day.daily?.waterMl ?? 0); setWeightKg(metrics.weightKg ?? undefined); setSteps(metrics.steps ?? undefined); setLastSyncedAt(new Date().toISOString());
+    }, () => setNotice("讀取資料失敗，請確認網路與登入狀態。"));
+  }, [date, user, syncKey]);
+  // Back to the app (iOS may have dropped the connection while it slept): reconnect.
+  useEffect(() => {
+    if (!user) return;
+    const onVisible = () => { if (document.visibilityState === "visible") resync(); };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("pageshow", onVisible);
+    return () => { document.removeEventListener("visibilitychange", onVisible); window.removeEventListener("pageshow", onVisible); };
+  }, [resync, user]);
   useEffect(() => { const timer = window.setTimeout(() => { void loadLibrary().catch(() => undefined); }, 0); return () => window.clearTimeout(timer); }, [loadLibrary]);
   useEffect(() => { if (!user) return; void getUserProfile(user.uid).then(profile => { if (!profile) return; setTracking(parseTracking(profile)); setHealthFocus(parseHealthFocus(profile)); setTargets(current => ({ ...current, caloriesKcal: { min: profileNumber(profile, "calorieTargetMin", current.caloriesKcal.min), max: profileNumber(profile, "calorieTargetMax", current.caloriesKcal.max) }, proteinG: { min: profileNumber(profile, "proteinTargetMin", current.proteinG.min), max: profileNumber(profile, "proteinTargetMax", current.proteinG.max) }, carbsG: { min: profileNumber(profile, "carbTargetMin", current.carbsG.min), max: profileNumber(profile, "carbTargetMax", current.carbsG.max) }, fatG: { min: profileNumber(profile, "fatTargetMin", current.fatG.min), max: profileNumber(profile, "fatTargetMax", current.fatG.max) }, waterMl: { min: profileNumber(profile, "waterTargetMinMl", current.waterMl.min), max: profileNumber(profile, "waterTargetMaxMl", current.waterMl.max) }, fiberG: profileNumber(profile, "fiberTarget", current.fiberG), sodiumMg: profileNumber(profile, "sodiumLimit", current.sodiumMg) })); }).catch(() => setNotice("讀取個人目標失敗。")); }, [user]);
   useEffect(() => {
@@ -327,7 +346,6 @@ export function HealthApp({ initialView = "daily" }: { initialView?: View }) {
     setNotice(copied ? "已複製資料與 ChatGPT 分析指令。" : "無法自動複製，請確認 Safari 允許網站使用剪貼簿後再試一次。");
     return copied;
   };
-  const refreshDaily = async () => { if (await loadDaily()) setNotice("已更新當日紀錄。"); };
 
   if (!hasFirebaseConfig && !demo) return <SetupScreen />;
   if (loading && !user && !demo) return <main className="setup app-splash" aria-busy="true"><img src="/eris-96.png" alt="" /><span className="splash-dots" aria-label="正在確認登入狀態"><i /><i /><i /></span></main>;
@@ -341,7 +359,7 @@ export function HealthApp({ initialView = "daily" }: { initialView?: View }) {
     <ChatView user={account} demo={demo} active={view === "chat"} onWorkingChange={setChatBusy} />
     <section className="content" hidden={view === "chat"}>
       {notice && <div className="notice" role="status"><span className="notice-copy">{notice}</span><button type="button" className="notice-dismiss" onClick={() => setNotice("")} aria-label="關閉提示">關閉</button></div>}
-      {view === "daily" && <DailyView date={date} setDate={setDate} totals={totals} entries={entries} waterMl={waterMl} weightKg={weightKg} steps={steps} loading={loading} lastSyncedAt={lastSyncedAt} savedFoods={savedFoods} setEntryEditor={setEntryEditor} deleteEntry={deleteEntry} saveAsCommon={saveAsCommon} addWater={addWater} quickAddDrink={quickAddDrink} updateWeight={updateWeight} updateSteps={updateSteps} refresh={refreshDaily} exportData={openExport} />}
+      {view === "daily" && <DailyView date={date} setDate={setDate} totals={totals} entries={entries} waterMl={waterMl} weightKg={weightKg} steps={steps} loading={loading} lastSyncedAt={lastSyncedAt} savedFoods={savedFoods} setEntryEditor={setEntryEditor} deleteEntry={deleteEntry} saveAsCommon={saveAsCommon} addWater={addWater} quickAddDrink={quickAddDrink} updateWeight={updateWeight} updateSteps={updateSteps} exportData={openExport} />}
       {view === "overview" && <Overview history={history.filter(day => day.entryCount > 0 || day.waterMl > 0 || day.total.caloriesKcal > 0)} loading={historyLoading} error={historyError} retry={() => void loadHistory()} openDate={next => { setDate(next); setView("daily"); }} exportData={openExport} />}
       {view === "trends" && <Trends history={history} />}
       {view === "foods" && <FoodLibrary date={date} foods={savedFoods} loading={savedFoodsLoading} error={savedFoodsError} retry={() => void loadLibrary().catch(() => undefined)} add={() => setFoodEditor(null)} quickAdd={addSavedFoodToDay} edit={setFoodEditor} remove={deleteFood} mergeDuplicates={mergeDuplicateFoods} applySuggestedHydration={applySuggestedHydration} />}
@@ -394,7 +412,7 @@ async function copyPlainText(text: string): Promise<boolean> {
   return copied;
 }
 
-function DailyView({ date, setDate, totals, entries, waterMl, weightKg, steps, loading, lastSyncedAt, savedFoods, setEntryEditor, deleteEntry, saveAsCommon, addWater, quickAddDrink, updateWeight, updateSteps, refresh, exportData }: { date: string; setDate: (value: string) => void; totals: Nutrition; entries: FoodEntry[]; waterMl: number; weightKg?: number; steps?: number; loading: boolean; lastSyncedAt: string | null; savedFoods: SavedFoodSummary[]; setEntryEditor: (entry: EditorState) => void; deleteEntry: (id: string) => Promise<void>; saveAsCommon: (entry: FoodEntry) => Promise<void>; addWater: (amount: number) => Promise<void>; quickAddDrink: (food: SavedFoodSummary) => Promise<void>; updateWeight: (value: string) => Promise<void>; updateSteps: (value: string) => Promise<void>; refresh: () => Promise<void>; exportData: () => void }) {
+function DailyView({ date, setDate, totals, entries, waterMl, weightKg, steps, loading, lastSyncedAt, savedFoods, setEntryEditor, deleteEntry, saveAsCommon, addWater, quickAddDrink, updateWeight, updateSteps, exportData }: { date: string; setDate: (value: string) => void; totals: Nutrition; entries: FoodEntry[]; waterMl: number; weightKg?: number; steps?: number; loading: boolean; lastSyncedAt: string | null; savedFoods: SavedFoodSummary[]; setEntryEditor: (entry: EditorState) => void; deleteEntry: (id: string) => Promise<void>; saveAsCommon: (entry: FoodEntry) => Promise<void>; addWater: (amount: number) => Promise<void>; quickAddDrink: (food: SavedFoodSummary) => Promise<void>; updateWeight: (value: string) => Promise<void>; updateSteps: (value: string) => Promise<void>; exportData: () => void }) {
   const targets = useContext(TargetsContext);
   const previous = () => setDate(formatLocalDate(new Date(new Date(`${date}T12:00:00`).getTime() - 86400000)));
   const next = () => setDate(formatLocalDate(new Date(new Date(`${date}T12:00:00`).getTime() + 86400000)));
@@ -405,7 +423,7 @@ function DailyView({ date, setDate, totals, entries, waterMl, weightKg, steps, l
   const tracking = useContext(TrackingContext);
   return <>
     <div className="date-bar"><button onClick={previous}><b>‹ 前一天</b></button><label>指定日期<input type="date" value={date} onChange={event => setDate(event.target.value)} /></label><button onClick={next}><b>後一天 ›</b></button></div>
-    <header><div><p className="eyebrow">DAILY LOG</p><h1>{date === formatLocalDate(new Date()) ? "今天，好好吃飯。" : `${dateLabel(date)}的飲食紀錄`}</h1><p className="muted">營養欄位以每份紀錄，總計會依食用份數換算。</p></div><div className="header-actions"><span className="sync-status" aria-live="polite">{loading ? "同步中…" : lastSyncedAt ? `已同步 ${new Intl.DateTimeFormat("zh-TW", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Taipei" }).format(new Date(lastSyncedAt))}` : "尚未同步"}</span><button className="refresh-btn" onClick={() => void refresh()} disabled={loading} aria-label="重新整理當日紀錄"><span aria-hidden="true">↻</span><b>重新整理</b></button><button className="copy-btn" onClick={exportData}>匯出資料</button><button className="primary" onClick={() => setEntryEditor(null)}>＋ 新增紀錄</button></div></header>
+    <header><div><p className="eyebrow">DAILY LOG</p><h1>{date === formatLocalDate(new Date()) ? "今天，好好吃飯。" : `${dateLabel(date)}的飲食紀錄`}</h1><p className="muted">營養欄位以每份紀錄，總計會依食用份數換算。</p></div><div className="header-actions"><span className="sync-status" aria-live="polite">{loading ? "同步中…" : lastSyncedAt ? `即時同步・${new Intl.DateTimeFormat("zh-TW", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Taipei" }).format(new Date(lastSyncedAt))}` : "尚未同步"}</span><button className="copy-btn" onClick={exportData}>匯出資料</button><button className="primary" onClick={() => setEntryEditor(null)}>＋ 新增紀錄</button></div></header>
     <DailyGuidance totals={totals} waterMl={hydration.totalWaterMl} entries={entries} weightKg={weightKg} />
     <section className="hero-card"><div><p>今日熱量</p><div className="calorie"><strong>{Math.round(totals.caloriesKcal)}</strong><span> / {targetRangeText(targets.caloriesKcal, "kcal")}</span></div><div className="meter"><i style={{ width: `${Math.min(100, totals.caloriesKcal / targets.caloriesKcal.max * 100)}%` }} /></div><p className={calorieStatus.className}>{calorieStatus.text}</p></div><div className="weight"><span>當日紀錄</span><strong>{entries.length} <small>項</small></strong><p>纖維 {formatNutrition(totals.fiberG, "g")} · 鈉 {formatNutrition(totals.sodiumMg, "mg")}</p></div></section>
     <section className={`macro-row${tracking.water ? "" : " no-water"}`}><Metric label="蛋白質" value={totals.proteinG} target={targets.proteinG} /><Metric label="碳水" value={totals.carbsG} target={targets.carbsG} /><Metric label="脂肪" value={totals.fatG} target={targets.fatG} />{tracking.water && <div className="water"><span>水分（含飲品）</span><strong>{hydration.totalWaterMl} <small>ml</small></strong><p className="water-breakdown">目標 {targetRangeText(targets.waterMl, "ml")} ・ 白水 {hydration.plainWaterMl} ml ・ 飲品 {hydration.beverageWaterMl} ml</p><div className="meter water-meter"><i style={{ width: `${Math.min(100, hydration.totalWaterMl / targets.waterMl.max * 100)}%` }} /></div><div className="quick-row"><button onClick={() => void addWater(250)}>＋250 ml</button><button onClick={() => void addWater(500)}>＋500 ml</button></div>{quickDrinks.length > 0 && <div className="drink-shortcuts"><span>快速加入常用食物</span><div>{quickDrinks.map(food => <button key={food.id} onClick={() => void quickAddDrink(food)}>＋ {food.name}{food.hydrationMlPerServing > 0 && <small>{Math.round(food.hydrationMlPerServing)} ml</small>}</button>)}</div></div>}{hydratingEntries.length > 0 && <details className="hydration-details"><summary>查看水分明細</summary><div><p>白水 <b>{hydration.plainWaterMl} ml</b></p>{hydratingEntries.map(entry => <p key={entry.id}>{entry.name} <b>{Math.round(entry.hydrationMl)} ml</b></p>)}</div></details>}</div>}</section>

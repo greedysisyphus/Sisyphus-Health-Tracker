@@ -1,4 +1,4 @@
-import { collection, deleteDoc, doc, getDoc, getDocs, increment, limit, orderBy, query, runTransaction, serverTimestamp, setDoc } from "firebase/firestore";
+import { collection, deleteDoc, doc, getDoc, getDocs, increment, limit, onSnapshot, orderBy, query, runTransaction, serverTimestamp, setDoc } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { calculateDailyNutrition, emptyNutrition, foodSearchTokens, normalizeFoodRecord, type FoodEntry, type Nutrition } from "../lib/nutrition";
 import { dailySummaryFields, nutritionFromDailyData } from "../lib/daily-summary";
@@ -14,6 +14,28 @@ export async function listDailyEntries(userId: string, date: string): Promise<Fo
   if (!db) return [];
   const snapshot = await getDocs(collection(db, dailyPath(userId, date), "entries"));
   return snapshot.docs.map(item => normalizeFoodRecord(item.data(), item.id)).sort((a, b) => a.time.localeCompare(b.time));
+}
+
+export type DaySnapshot = { entries: FoodEntry[]; daily: DailyLog | null; body: BodyLog | null };
+
+/**
+ * Live view of one day: entries, the day's log and the body log. Calls `onChange` once all three have
+ * arrived and again on every change from anywhere (Eris in the chat, another device). Returns unsubscribe.
+ */
+export function watchDay(userId: string, date: string, onChange: (day: DaySnapshot) => void, onError: (error: Error) => void): () => void {
+  const firebaseDb = db;
+  if (!firebaseDb) return () => undefined;
+  const latest: Partial<DaySnapshot> = {};
+  const emit = () => { if (latest.entries && latest.daily !== undefined && latest.body !== undefined) onChange({ entries: latest.entries, daily: latest.daily, body: latest.body }); };
+  const stops = [
+    onSnapshot(collection(firebaseDb, dailyPath(userId, date), "entries"), snapshot => {
+      latest.entries = snapshot.docs.map(item => normalizeFoodRecord(item.data(), item.id)).sort((a, b) => a.time.localeCompare(b.time));
+      emit();
+    }, onError),
+    onSnapshot(doc(firebaseDb, dailyPath(userId, date)), snapshot => { latest.daily = snapshot.exists() ? snapshot.data() as DailyLog : null; emit(); }, onError),
+    onSnapshot(doc(firebaseDb, `users/${userId}/bodyLogs/${date}`), snapshot => { latest.body = snapshot.exists() ? snapshot.data() as BodyLog : null; emit(); }, onError),
+  ];
+  return () => { for (const stop of stops) stop(); };
 }
 
 export async function saveEntry(userId: string, date: string, entry: FoodEntry): Promise<void> {
