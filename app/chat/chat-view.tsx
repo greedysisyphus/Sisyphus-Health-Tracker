@@ -36,7 +36,8 @@ const clock = (ms: number) => new Date(ms).toLocaleTimeString("zh-TW", { hour: "
 async function idToken(user: User) { return user.getIdToken(); }
 
 /* Dev-only demo data (`?demo`), stripped from production builds. */
-const DEMO_ALLOWED = process.env.NODE_ENV !== "production";
+/** Dev builds, or a local phone-test build made with NEXT_PUBLIC_ALLOW_DEMO=1. Never set on Vercel. */
+const DEMO_ALLOWED = process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_ALLOW_DEMO === "1";
 const demoDocs = (now = Date.now()): ChatDoc[] => [
   { id: "d1", text: "早餐", thumbs: ["/eris-180.png", "/eris-180.png"], photoCount: 2, status: "done", createdAt: now - 26 * 3_600_000,
     reply: "記好了：鮪魚飯糰 1 個（約 210 大卡）、無糖豆漿 400ml（142 大卡）。\n今天累計 352 大卡、蛋白質 22g。" },

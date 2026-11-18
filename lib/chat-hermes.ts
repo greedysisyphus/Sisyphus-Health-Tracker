@@ -54,7 +54,7 @@ export function taipeiNow(now = new Date()) {
 export function runInstructions(messageId: string, now = new Date(), extra: string[] = []) {
   const { date, time } = taipeiNow(now);
   return [
-    "你在「日常營養」網站的聊天頁和使用者對話（不是 Discord）。使用者傳完訊息通常會立刻關掉 App，晚點才回來看你的回覆。",
+    "你在「Eris Health」網站的聊天頁和使用者對話（不是 Discord）。使用者傳完訊息通常會立刻關掉 App，晚點才回來看你的回覆。",
     `現在是台北時間 ${date} ${time}。使用者沒有說日期時，一律記在 today。`,
     "要記錄飲食、飲水或身體資料時，先載入 health-log skill，照它的流程寫入。腳本固定在 ~/.hermes/skills/health-log/scripts/health_log.py，直接用 python3 執行，不要先找路徑或列目錄。",
     "為了快：寫入前不需要先查今日摘要或常用食物，直接做一次 log_health_event；API 回傳的 dailySummary 就是今天的累計。只有使用者要更正或刪除時才先查。",
