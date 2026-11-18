@@ -1,0 +1,13 @@
+{
+  "name": "Eris Health 測試",
+  "short_name": "Eris 測試",
+  "start_url": "/chat?demo",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0f1115",
+  "theme_color": "#0f1115",
+  "icons": [
+    { "src": "/eris-180.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "/eris-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
