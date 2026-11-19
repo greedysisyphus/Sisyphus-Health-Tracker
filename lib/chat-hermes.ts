@@ -61,10 +61,17 @@ export function runInstructions(messageId: string, now = new Date(), extra: stri
     "為了快：寫入前不需要先查今日摘要或常用食物，直接做一次 log_health_event；API 回傳的 dailySummary 就是今天的累計。只有使用者要更正或刪除時才先查。",
     `這則訊息的所有照片與文字合併成一次 log_health_event：eventId 用 "${messageId}"，source 用 "dashboard"。不要改用其他 eventId。`,
     "沒辦法等使用者回答問題：資訊不足時先用合理的份量預估並標好 confidence，在回覆裡講清楚你假設了什麼，她之後可以更正。只有猜錯會差很多（例如完全看不出吃了多少）時，才先不寫入，回一個簡短問題。",
+    "照片裡看得到的食物和飲料都要記錄，除非使用者說沒吃或只是問問題；包裝上有營養標示時，照標示的每份數字記。",
+    "之後的訊息你就看不到這張照片了：回覆時把照片裡看到的品項（含標示上的熱量）寫出來，使用者之後更正時你才知道是哪一個。",
     "如果這則訊息只是聊天或發問，就照常回答，不要寫入任何紀錄。",
     "回覆用繁體中文，口吻溫暖、簡短，最多四行：記了哪些東西、各自大約熱量，以及 API 回傳 dailySummary 的今日累計熱量與蛋白質。只有 API 回傳 ok: true 才能說已記錄。",
     ...extra,
   ].join("\n");
+}
+
+/** A message the phone may still withdraw: never handed to Eris, and no send of it can still be in flight. */
+export function withdrawable(status: unknown, updatedAtMs: number, now = Date.now()) {
+  return status === "retry" || (status === "sending" && now - updatedAtMs > 360_000);
 }
 
 export function runRequestBody(message: ChatSend, session: string, now = new Date(), extra: string[] = []) {
@@ -113,7 +120,8 @@ export async function startRun(target: ChatTarget, message: ChatSend, fetcher: F
         method: "POST",
         headers: { Authorization: `Bearer ${target.key}`, "Content-Type": "application/json", "Idempotency-Key": `dashboard-chat-${message.id}` },
         body,
-        signal: AbortSignal.timeout(12_000),
+        // Photos travel from Vercel to the server in Tokyo; a few MB can take well over 12s on that path.
+        signal: AbortSignal.timeout(60_000),
       });
       const result = await response.json().catch(() => ({})) as { run_id?: unknown; error?: { code?: unknown } };
       if (!response.ok || typeof result.run_id !== "string") {

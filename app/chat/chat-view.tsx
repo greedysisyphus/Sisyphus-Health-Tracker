@@ -5,7 +5,7 @@ import type { User } from "firebase/auth";
 import { collection, limit, onSnapshot, orderBy, query, type Timestamp } from "firebase/firestore";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { db } from "../../lib/firebase";
-import { fitPhotos, newMessageId, outbox, preparePhoto, sentPhotos, type OutboxItem } from "../../lib/chat-client";
+import { duplicateIds, fitPhotos, newMessageId, outbox, preparePhoto, sentPhotos, type OutboxItem } from "../../lib/chat-client";
 import "./chat.css";
 import { ErisMascot, type MascotState } from "./eris-mascot";
 
@@ -167,13 +167,25 @@ export function ChatView({ user, demo, active, onWorkingChange }: { user: User; 
   useEffect(() => { sendRef.current = send; }, [send]);
 
   const flush = useCallback(async () => {
-    const items = await outbox.all();
+    let items = await outbox.all();
+    const duplicates = new Set(duplicateIds(items));
+    if (duplicates.size) {
+      const token = await idToken(user);
+      for (const id of duplicates) {
+        const response = await fetch(`/api/chat?id=${encodeURIComponent(id)}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } }).catch(() => null);
+        // 409: Eris already has it, so it is a real message now; keep showing it.
+        if (response?.ok) await outbox.remove(id);
+        else duplicates.delete(id);
+      }
+      setPending(list => list.filter(entry => !duplicates.has(entry.id)));
+      items = items.filter(item => !duplicates.has(item.id));
+    }
     setPending(list => {
       const known = new Set(list.map(entry => entry.id));
       return [...list, ...items.filter(entry => !known.has(entry.id))];
     });
     for (const item of items) await send(item);
-  }, [send]);
+  }, [send, user]);
 
   useEffect(() => {
     if (demo) return;

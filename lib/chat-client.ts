@@ -4,17 +4,30 @@
 
 export type OutboxItem = { id: string; text: string; photos: string[]; thumbs: string[]; createdAt: number; failed?: boolean; attempts?: number };
 
-/** Big enough that the small print on a nutrition label stays readable for the AI. */
-const PHOTO_EDGE = 2048;
+/** Big enough that the small print on a nutrition label stays readable for the AI, small enough to upload quickly. */
+const PHOTO_EDGE = 1600;
 /** The server accepts up to 3,000,000 characters per photo; stay under it. */
 const MAX_PHOTO_CHARS = 2_600_000;
 /** Steps down only when a request with several photos would be too large. */
-const FIT_STEPS = [[1600, 0.78], [1280, 0.72], [960, 0.6]] as const;
+const FIT_STEPS = [[1280, 0.72], [960, 0.6]] as const;
 const THUMB_EDGE = 480;
 /** History thumbnails share one Firestore document (≤ 800,000 chars for up to 10): detailed photos step down. */
 const THUMB_TARGET_CHARS = 72_000;
 /** Vercel rejects request bodies above ~4.5 MB; leave headroom for JSON and text. */
 export const MAX_BODY_CHARS = 4_000_000;
+
+/** Same photos and text: the second copy is the same message sent twice while the first was stuck. Text-only repeats can be real ("喝水 300ml" twice), so they stay. */
+export function duplicateIds(items: OutboxItem[]) {
+  const seen = new Set<string>();
+  const duplicates: string[] = [];
+  for (const item of [...items].sort((a, b) => a.createdAt - b.createdAt)) {
+    if (!item.photos.length) continue;
+    const key = [item.text.trim(), ...item.photos.map(photo => `${photo.length}:${photo.slice(-96)}`)].join("\u0000");
+    if (seen.has(key)) duplicates.push(item.id);
+    else seen.add(key);
+  }
+  return duplicates;
+}
 
 export function newMessageId() {
   const bytes = crypto.getRandomValues(new Uint8Array(12));
@@ -49,7 +62,7 @@ function draw(source: CanvasImageSource, width: number, height: number, edge: nu
 }
 
 /** One picked photo → an upload-sized JPEG plus a small thumbnail for the chat history. */
-export async function preparePhoto(file: Blob, quality = 0.82) {
+export async function preparePhoto(file: Blob, quality = 0.8) {
   const image = await decode(file);
   try {
     let thumb = draw(image.source, image.width, image.height, THUMB_EDGE, 0.72);
@@ -65,7 +78,7 @@ export async function preparePhoto(file: Blob, quality = 0.82) {
   }
 }
 
-/** Shrinks photos step by step (1600 → 1280 → 960 px) only when many large ones would not fit in one request. */
+/** Shrinks photos step by step (1280 → 960 px) only when many large ones would not fit in one request. */
 export async function fitPhotos(photos: string[]) {
   const size = (list: string[]) => list.reduce((sum, photo) => sum + photo.length, 0);
   if (size(photos) <= MAX_BODY_CHARS) return photos;
