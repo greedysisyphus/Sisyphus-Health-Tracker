@@ -10,9 +10,9 @@ const PHOTO_EDGE = 2048;
 const MAX_PHOTO_CHARS = 2_600_000;
 /** Steps down only when a request with several photos would be too large. */
 const FIT_STEPS = [[1600, 0.78], [1280, 0.72], [960, 0.6]] as const;
-const THUMB_EDGE = 320;
-/** Keep each history thumbnail small: detailed photos get re-encoded at lower quality. */
-const THUMB_TARGET_CHARS = 50_000;
+const THUMB_EDGE = 480;
+/** History thumbnails share one Firestore document (≤ 800,000 chars for up to 10): detailed photos step down. */
+const THUMB_TARGET_CHARS = 72_000;
 /** Vercel rejects request bodies above ~4.5 MB; leave headroom for JSON and text. */
 export const MAX_BODY_CHARS = 4_000_000;
 
@@ -52,8 +52,8 @@ function draw(source: CanvasImageSource, width: number, height: number, edge: nu
 export async function preparePhoto(file: Blob, quality = 0.82) {
   const image = await decode(file);
   try {
-    let thumb = draw(image.source, image.width, image.height, THUMB_EDGE, 0.6);
-    for (const [edge, q] of [[THUMB_EDGE, 0.45], [240, 0.45], [200, 0.35]] as const) {
+    let thumb = draw(image.source, image.width, image.height, THUMB_EDGE, 0.72);
+    for (const [edge, q] of [[THUMB_EDGE, 0.55], [400, 0.5], [320, 0.45], [240, 0.4]] as const) {
       if (thumb.length <= THUMB_TARGET_CHARS) break;
       thumb = draw(image.source, image.width, image.height, edge, q);
     }
@@ -83,21 +83,28 @@ export async function fitPhotos(photos: string[]) {
 
 const DB_NAME = "eris-chat";
 const STORE = "outbox";
+/** Full-size copies of photos sent from this phone, so tapping a photo in the history shows it sharp. */
+const PHOTO_STORE = "photos";
+const KEEP_PHOTO_MESSAGES = 40;
 
 function openOutbox(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 1);
-    request.onupgradeneeded = () => { request.result.createObjectStore(STORE, { keyPath: "id" }); };
+    const request = indexedDB.open(DB_NAME, 2);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: "id" });
+      if (!db.objectStoreNames.contains(PHOTO_STORE)) db.createObjectStore(PHOTO_STORE, { keyPath: "id" });
+    };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
   });
 }
 
-async function withStore<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => IDBRequest<T>): Promise<T> {
+async function withStore<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => IDBRequest<T>, name = STORE): Promise<T> {
   const db = await openOutbox();
   try {
     return await new Promise<T>((resolve, reject) => {
-      const request = run(db.transaction(STORE, mode).objectStore(STORE));
+      const request = run(db.transaction(name, mode).objectStore(name));
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });
@@ -112,4 +119,22 @@ export const outbox = {
   },
   async put(item: OutboxItem) { try { await withStore("readwrite", store => store.put(item)); } catch { /* private mode: keep in memory only */ } },
   async remove(id: string) { try { await withStore("readwrite", store => store.delete(id)); } catch { /* ignore */ } },
+};
+
+type SavedPhotos = { id: string; photos: string[]; createdAt: number };
+
+export const sentPhotos = {
+  /** Keeps the photos exactly as Eris received them; only the newest messages stay, to spare phone storage. */
+  async save(id: string, photos: string[], createdAt: number) {
+    if (!photos.length) return;
+    try {
+      await withStore("readwrite", store => store.put({ id, photos, createdAt } satisfies SavedPhotos), PHOTO_STORE);
+      const all = await withStore<SavedPhotos[]>("readonly", store => store.getAll(), PHOTO_STORE);
+      const old = all.sort((a, b) => b.createdAt - a.createdAt).slice(KEEP_PHOTO_MESSAGES);
+      for (const item of old) await withStore("readwrite", store => store.delete(item.id), PHOTO_STORE);
+    } catch { /* storage full or private mode: the history thumbnail still works */ }
+  },
+  async get(id: string, index: number): Promise<string | null> {
+    try { return (await withStore<SavedPhotos | undefined>("readonly", store => store.get(id), PHOTO_STORE))?.photos[index] ?? null; } catch { return null; }
+  },
 };

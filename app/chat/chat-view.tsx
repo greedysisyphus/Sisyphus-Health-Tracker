@@ -5,7 +5,7 @@ import type { User } from "firebase/auth";
 import { collection, limit, onSnapshot, orderBy, query, type Timestamp } from "firebase/firestore";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { db } from "../../lib/firebase";
-import { fitPhotos, newMessageId, outbox, preparePhoto, type OutboxItem } from "../../lib/chat-client";
+import { fitPhotos, newMessageId, outbox, preparePhoto, sentPhotos, type OutboxItem } from "../../lib/chat-client";
 import "./chat.css";
 import { ErisMascot, type MascotState } from "./eris-mascot";
 
@@ -58,7 +58,17 @@ export function ChatView({ user, demo, active, onWorkingChange }: { user: User; 
   const [photos, setPhotos] = useState<DraftPhoto[]>([]);
   const [preparing, setPreparing] = useState(0);
   const [toast, setToast] = useState<{ key: number; text: string; tone: "ok" | "warn" } | null>(null);
-  const [viewer, setViewer] = useState<string | null>(null);
+  const [viewer, setViewer] = useState<{ key: string; src: string } | null>(null);
+  /** Shows the history thumbnail at once, then swaps in the full photo this phone kept when it was sent. */
+  const openPhoto = (row: Row, index: number) => {
+    const key = `${row.id}:${index}`;
+    const local = row.local?.photos[index];
+    setViewer({ key, src: local ?? row.thumbs[index] });
+    if (local) return;
+    void sentPhotos.get(row.id, index).then(full => {
+      if (full) setViewer(current => current?.key === key ? { key, src: full } : current);
+    });
+  };
   /** On phones the keyboard is up while the message box has focus; the tabs step aside. */
   const [typing, setTyping] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
@@ -238,6 +248,7 @@ export function ChatView({ user, demo, active, onWorkingChange }: { user: User; 
     try { ready = await fitPhotos(photos.map(photo => photo.photo)); } catch { say("照片太大了，少選幾張再送", "warn"); return; }
     const item: OutboxItem = { id: newMessageId(), text: body, photos: ready, thumbs: photos.map(photo => photo.thumb), createdAt: Date.now() };
     await outbox.put(item);
+    void sentPhotos.save(item.id, item.photos, item.createdAt);
     stickToBottom.current = true;
     setPending(list => [...list, item]);
     setText(""); setPhotos([]);
@@ -286,7 +297,7 @@ export function ChatView({ user, demo, active, onWorkingChange }: { user: User; 
           const day = dayLabel(row.createdAt);
           const divider = index === 0 || day !== dayLabel(rows[index - 1].createdAt)
             ? <div className="chat-day" key={`d-${row.id}`}><span>{day}</span></div> : null;
-          return [divider, <MessageRow key={row.id} row={row} fresh={row.createdAt > openedAt} onRetry={item => void send(item)} onOpen={setViewer} />];
+          return [divider, <MessageRow key={row.id} row={row} fresh={row.createdAt > openedAt} onRetry={item => void send(item)} onOpen={index => openPhoto(row, index)} />];
         })}
       </div>
 
@@ -323,12 +334,12 @@ export function ChatView({ user, demo, active, onWorkingChange }: { user: User; 
       {toast && <div key={toast.key} className={`chat-toast ${toast.tone}`} role="status">
         {toast.tone === "ok" && <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5 10 17.5 19 7.5" /></svg>}{toast.text}
       </div>}
-      {viewer && <button className="chat-viewer" onClick={() => setViewer(null)} aria-label="關閉照片"><img src={viewer} alt="" /></button>}
+      {viewer && <button className="chat-viewer" onClick={() => setViewer(null)} aria-label="關閉照片"><img src={viewer.src} alt="" /></button>}
     </section>
   );
 }
 
-function MessageRow({ row, fresh, onRetry, onOpen }: { row: Row; fresh: boolean; onRetry: (item: OutboxItem) => void; onOpen: (src: string) => void }) {
+function MessageRow({ row, fresh, onRetry, onOpen }: { row: Row; fresh: boolean; onRetry: (item: OutboxItem) => void; onOpen: (index: number) => void }) {
   const status = row.doc?.status;
   const local = row.local;
   let chip: React.ReactNode;
@@ -344,7 +355,7 @@ function MessageRow({ row, fresh, onRetry, onOpen }: { row: Row; fresh: boolean;
           {row.thumbs.length > 0 && (
             <div className={`msg-photos n${Math.min(row.thumbs.length, 4)}`}>
               {row.thumbs.slice(0, 4).map((thumb, index) => (
-                <button key={index} onClick={() => onOpen(thumb)} aria-label="放大照片">
+                <button key={index} onClick={() => onOpen(index)} aria-label="放大照片">
                   <img src={thumb} alt="" />
                   {index === 3 && row.thumbs.length > 4 && <span>+{row.thumbs.length - 4}</span>}
                 </button>
