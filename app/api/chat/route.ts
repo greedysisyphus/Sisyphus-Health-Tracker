@@ -2,7 +2,7 @@ import { after } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminAuth } from "../../../lib/firebase-admin-auth";
 import { getAdminDb } from "../../../lib/firebase-admin";
-import { chatSendSchema, readRun, resolveChatTarget, startRun, taipeiNow, type ChatTarget } from "../../../lib/chat-hermes";
+import { chatSendSchema, readRun, withdrawable, resolveChatTarget, startRun, taipeiNow, type ChatTarget } from "../../../lib/chat-hermes";
 import { parseHealthFocus, parseTracking, trackingInstructions } from "../../../lib/tracking";
 
 export const runtime = "nodejs";
@@ -97,6 +97,23 @@ export async function POST(request: Request) {
   await ref.update({ status: "processing", runId, error: null, updatedAt: FieldValue.serverTimestamp() });
   after(() => watch(uid, message.id, target, runId));
   return json({ ok: true, id: message.id, status: "processing" });
+}
+
+/** The phone withdraws a message Eris never received (e.g. the same photos sent twice while the first was stuck). */
+export async function DELETE(request: Request) {
+  const uid = await signedInUser(request);
+  if (!uid) return json({ error: "unauthorized" }, 401);
+  const id = new URL(request.url).searchParams.get("id") ?? "";
+  if (!/^[A-Za-z0-9_-]{8,64}$/.test(id)) return json({ error: "invalid_request" }, 400);
+  const ref = messages(uid).doc(id);
+  const removed = await getAdminDb().runTransaction(async transaction => {
+    const snapshot = await transaction.get(ref);
+    if (!snapshot.exists) return true;
+    if (!withdrawable(snapshot.get("status"), snapshot.get("updatedAt")?.toMillis?.() ?? 0)) return false;
+    transaction.delete(ref);
+    return true;
+  });
+  return removed ? json({ ok: true }) : json({ error: "already_sent" }, 409);
 }
 
 /** Called when the page opens: pick up replies that finished while the phone was closed. */
