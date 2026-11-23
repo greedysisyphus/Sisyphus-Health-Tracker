@@ -336,7 +336,10 @@ export function ChatView({ user, demo, active, onWorkingChange }: { user: User; 
             onChange={event => setText(event.target.value)} onKeyDown={onKeyDown} enterKeyHint="enter"
             onFocus={() => setTyping(window.matchMedia("(pointer: coarse)").matches)} onBlur={() => setTyping(false)}
           />
-          <button className={`chat-send${canSend ? " ready" : ""}`} disabled={!canSend} onClick={() => void submit()} aria-label="送出">
+          {/* Keep the text box focused on tap: if it blurred, the keyboard would close and the layout jump
+              before the tap ends, so the first tap only hid the keyboard and never sent. */}
+          <button className={`chat-send${canSend ? " ready" : ""}`} disabled={!canSend} onClick={() => void submit()} aria-label="送出"
+            onPointerDown={event => event.preventDefault()} onMouseDown={event => event.preventDefault()}>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5.5 11.5 12 5l6.5 6.5" /></svg>
           </button>
         </div>
