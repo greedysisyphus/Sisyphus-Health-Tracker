@@ -221,10 +221,23 @@ export function ChatView({ user, demo, active, onWorkingChange }: { user: User; 
     scrolledOnce.current = true;
   }, [rows, active]);
   useEffect(() => { if (!active) { scrolledOnce.current = false; stickToBottom.current = true; } }, [active]);
+  // A photo only takes its height once it has loaded, which pushes the newest message out of view; follow it down.
+  useEffect(() => {
+    const list = listRef.current;
+    if (!list || !active) return;
+    const pin = (event: Event) => { if (stickToBottom.current && event.target instanceof HTMLImageElement) list.scrollTop = list.scrollHeight; };
+    list.addEventListener("load", pin, true);
+    return () => list.removeEventListener("load", pin, true);
+  }, [active]);
 
+  const lastTop = useRef(0);
   const onScroll = () => {
     const list = listRef.current;
-    if (list) stickToBottom.current = list.scrollHeight - list.scrollTop - list.clientHeight < 120;
+    if (!list) return;
+    // Only scrolling up to read older messages lets go of the bottom; the glide down to a new message never does.
+    if (list.scrollHeight - list.scrollTop - list.clientHeight < 120) stickToBottom.current = true;
+    else if (list.scrollTop < lastTop.current) stickToBottom.current = false;
+    lastTop.current = list.scrollTop;
   };
 
   const autoGrow = () => {
